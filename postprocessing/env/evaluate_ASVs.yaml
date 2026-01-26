@@ -1,0 +1,21 @@
+name: evaluate_ASVs
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  - mafft=7.526
+  - fasttree
+  - vsearch
+  - emboss
+  - seqkit
+  - r-base
+  - r-ape
+  - bioconductor-ggtree
+  - bioconductor-treeio
+  - biopython
+  - matplotlib
+  - pandas
+  - seaborn
+
+# conda env create -f _env/evaluate_ASVs.yaml
