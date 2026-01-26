@@ -1,0 +1,24 @@
+# Snakemake
+.snakemake/
+*.log
+*.benchmark
+
+# Conda / environments
+.env
+*.yaml.lock
+
+# Results & large files
+results/
+output/
+*.fastq
+*.fastq.gz
+*.bam
+*.sam
+*.fq.gz
+figures
+
+# Temporary / editor files
+*~
+*.swp
+.DS_Store
+
