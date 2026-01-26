@@ -5,3 +5,5 @@ output/
 .vscode
 data/
 results/
+.test/db_sintax.fa
+
