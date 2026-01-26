@@ -1,0 +1,6048 @@
+---
+title: "ASV Comparison Summary"
+author: "Marie Riisgaard-Jensen"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    theme: flatly          # other good ones: united, lumen, cosmo
+    highlight: tango       # clean code highlighting
+    toc: true              # adds a sidebar Table of Contents
+    toc_depth: 3
+    toc_float: true        # floating TOC on the side
+    number_sections: true
+    fig_caption: true
+    fig_width: 10
+    fig_height: 5
+    df_print: paged        # interactive paged data frames
+    code_folding: show     # collapse code chunks
+---
+
+```{r setup markdown, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,       # hide code
+  message = FALSE,
+  warning = FALSE,
+  fig.align = "center",
+  fig.width = 12,
+  fig.height = 8,
+  dpi = 300,
+  out.width = "100%"
+)
+```
+
+
+```{r setup, include=FALSE}
+
+# ----- Load packages -------------
+pacman::p_load(
+  tidyverse,
+  ggh4x,
+  ggplot2,
+  knitr,
+  scales,
+  patchwork,
+  ggrepel,
+  ggtext,
+  ggnewscale,
+  Biostrings, #Changes the rename function? 
+  #viridis, 
+  vegan,
+  ggpubr,
+  pheatmap, 
+  #ggpattern, 
+  ampvis2, 
+  rstatix
+)
+
+
+#  library(forcats)
+
+
+#WD <- "~/Projects/RETHINK/p_nanopore_amplicon/6_snakemake_usearch_run_all"
+WD <- "/home/bio.aau.dk/hd95lp/Projects/RETHINK/ASV_resolved_community_with_ONT/postprocessing"
+
+setwd(WD)
+
+
+plot_dir <- "/home/bio.aau.dk/hd95lp/Projects/RETHINK/ASV_resolved_community_with_ONT/postprocessing/figures/"
+folder_dir_main <- "main"
+folder_dir_supp <- "suppl"
+
+
+
+```
+
+
+
+```{r}
+
+theme_marie_clean <- function(bg = "#E5EBF0") {   # <-- adjustable background color
+  theme(
+    # --- TEXT ---
+    text = element_text(color = "black"),     # <- ALL text black
+    plot.title = element_blank(),
+    axis.title = element_text(size = 14, color = "black"),
+    axis.text  = element_text(size = 12, color = "black"),
+    axis.text.x = element_text(angle = 45, hjust=1, vjust=1),
+
+    # --- PANEL BACKGROUND ---
+    panel.background = element_rect(
+      fill = bg,    # <- background color variable
+      color = NA
+    ),
+    panel.border = element_blank(),
+
+    # --- GRID ---
+    panel.grid.major = element_line(
+      color = "grey50",
+      linetype = "solid",
+      linewidth = 0.1
+    ),
+    panel.grid.minor = element_blank(),
+
+    # --- AXES ---
+    axis.line = element_line(color = "grey20", linewidth = 0.5),
+
+    # --- FACET STRIPS ---
+    strip.background = element_rect(
+      fill = "white",
+      color = NA
+    ),
+    strip.text = element_text(
+      size = 15,
+      color = "black"
+    ),
+
+    # --- LEGEND ---
+    legend.title = element_text(size = 12, color = "black"),
+    legend.text  = element_text(size = 11, color = "black"),
+    legend.background = element_rect(
+      fill = alpha("white", 0),  # <- transparent
+      color = NA                 # <- no border
+    ),
+    legend.key = element_rect(
+      fill = alpha("white", 0),  # <- transparent key
+      color = NA
+    ),
+
+    # --- MARGINS ---
+    plot.margin = margin(10, 10, 10, 10),
+    panel.spacing = unit(1, "lines")
+  )
+}
+
+
+```
+
+
+
+# Number of reads used {.tabset}
+
+Imports reads: 
+
+- Demultiplexed 
+- After cutadapt
+
+
+## Figure S14
+
+```{r, include=FALSE}
+
+
+not_used <- c("barcode11",              "barcode23",
+              "barcode35",              "barcode47",
+              "barcode59",              "barcode71",
+              "barcode83",              "barcode95",
+              "barcode12",              "barcode24",
+              "barcode36",              "barcode48",
+              "barcode60",              "barcode72",
+              "barcode84",              "barcode96"
+)
+
+stats_hyp_df_sup <- 
+  vroom::vroom(paste0(WD, "/results/stats_raw_reads/seqkit_stats_ONT_sup.tsv"), 
+               ) %>% 
+  filter(min_len != "min_len") %>% 
+  mutate(
+    barcode = sub("//.*", "", file),
+    num_seqs = as.numeric(num_seqs),
+    avg_len  = as.numeric(avg_len ),
+    sum_len   = as.numeric(sum_len  ),
+    max_len = as.numeric(max_len),
+    min_len  = as.numeric(min_len ),
+    used = if_else(barcode %in% not_used, "Barcode not used", "Barcode used"),
+    basecalling = "super"
+    )
+
+
+stats_pacbio_df_hyp_notrim <- 
+  vroom::vroom(paste0(WD, "/results/stats_raw_reads/seqkit_stats_PacBio.tsv")) %>% 
+  filter(min_len != "min_len") %>% 
+  mutate(
+    barcode = sub("//.*", "", file),
+    num_seqs = as.numeric(num_seqs),
+    avg_len  = as.numeric(avg_len ),
+    sum_len   = as.numeric(sum_len  ),
+    max_len = as.numeric(max_len),
+    min_len  = as.numeric(min_len ),
+    used = if_else(barcode %in% not_used, "Barcode not used", "Barcode used"),
+    basecalling = "pacbio"
+    )
+
+
+
+stats_df <- rbind(stats_hyp_df_sup, stats_pacbio_df_hyp_notrim)
+
+custom_breaks_minimal = c(100, 1000, 10000, 100000, 1000000)
+
+reads_per_barcode <- 
+  vroom::vroom(paste0(WD, "/results/stats_raw_reads/reads_per_barcode_for_all_subsets.tsv"), show_col_types = FALSE) %>% 
+  rename("run_folder" = "dataset", 
+       "subsample_size" = "subsampling_group") %>% 
+  filter(subsampling_group  == "sample_size_all_reads") %>% 
+  separate(dataset, into = c("basecalling", "rem", "primerset", "sample_content", "rem3", "rem6")) %>% 
+  select(-rem, -rem3, -rem6)
+
+new_barcode <- 
+  reads_per_barcode %>% 
+  arrange(barcode) %>% 
+  distinct(barcode, primerset, sample_content) %>%
+  group_by(primerset, sample_content) %>% 
+  mutate(new_barcode = row_number(barcode)) 
+
+
+stats_df %>% 
+    filter(!barcode %in% not_used) %>% 
+    left_join(reads_per_barcode) %>% 
+  filter(basecalling   != "hyper") %>% 
+  mutate(p_with_primer = reads / num_seqs *100) %>% 
+  group_by(primerset, basecalling) %>% 
+  summarise(mean = mean(p_with_primer))
+  
+
+  
+
+plot_df <- stats_df %>% 
+  mutate(x = "x", 
+         barcode_num = as.numeric(str_remove(barcode, "barcode"))) %>% 
+  filter(!barcode %in% not_used) %>% 
+  left_join(reads_per_barcode) %>% 
+  left_join(new_barcode) %>% 
+  mutate("Not detected" = num_seqs - reads) %>% 
+  select(-num_seqs) %>% 
+  pivot_longer(names_to = "Primer_detected", values_to = "n_reads", cols = c("Not detected", reads)) %>% 
+  mutate(Primer_detected = if_else(Primer_detected== "reads", "Detected", Primer_detected))
+
+
+custom_colors <- c(
+  # PacBio – cool greens
+   "#3B7A57",  # deep muted green
+   #"#66A182",  # mid green
+   #"#A6D1B7",  # light sage
+  "#B33C3C",   # dark brick red
+  #"#D9745B",   # soft coral
+  #"#E9B4A3",   # pale clay rose
+  "#5E4B8B",   # deep violet
+  "#7C6DAF",   # mid lavender
+  "#B4A6D1"    # soft lilac
+)
+
+seq_method_colors <- c("#CC007A","#0077B6")
+
+
+
+plot_df %>% 
+  mutate(
+    basecalling  = factor(
+      basecalling,
+      levels = c("pacbio", "super", "hyper"),
+      labels = c("Pacbio", "ONT", "ONT (hyp)")
+    ),
+    basecalling_Primer_detected = paste0(basecalling, "_", Primer_detected),
+    primerset = factor(primerset, levels = c("V4", "V1V3", "V1V8", "OPR")), 
+    sample_content = factor(sample_content, levels =c("Zmock", "Zfecal", "AD", "WWTP", "Soil")), 
+    "Primer detected" = fct_rev(as.factor(ifelse(Primer_detected == "Detected", T, F))),
+    # Convert to thousands once for labels
+    n_reads_k = n_reads / 1000
+  ) %>%  
+  filter(basecalling != "ONT (hyp)") %>% 
+  ggplot(aes(x = basecalling, y = n_reads, fill = basecalling, alpha = (`Primer detected`))) +
+  
+  geom_col(position = position_dodge(width = 0.9)) +
+  # ---- ADD LABELS (in thousands) ----
+  geom_text(
+    aes(label = scales::comma(n_reads_k, accuracy = 1)),
+    position = position_dodge(width = 0.9),
+    vjust = -0.2, show.legend = F,
+    size = 2.5, #alpha = 1
+  ) +
+
+  scale_alpha_manual(values = c(1, 0.7)) +
+  labs(x = "Method", y = "Reads (thousands)") +
+
+  theme_marie_clean(bg = "#ECECEC") +
+  theme(
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1, size = 10),
+    axis.title.x = element_blank(),
+    panel.spacing.x = unit(0.05, "lines"),
+    panel.spacing.y = unit(0.5, "lines"),
+    strip.background = element_rect(linejoin = "round", linetype = "solid", color = "grey"),
+    panel.grid.major.x = element_blank()
+  ) +
+
+  scale_fill_manual(values = seq_method_colors) +
+
+  facet_nested(
+    primerset ~ sample_content + new_barcode,
+    scales = "free",
+    space = "free_x"
+  ) +
+  guides(
+    fill = guide_legend(title = "Sequencing method"),
+    alpha = guide_legend(title = "Primer detected")
+  ) +
+
+  # ---- Y AXIS IN THOUSANDS ----
+  scale_y_continuous(
+    labels = function(x) scales::comma(x / 1000),
+    expand = expansion(mult = c(0, 0.1))
+  )
+
+  
+plot_name="Fig_S13_Primer_detection"
+plot_folder=folder_dir_supp
+ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".png"), width = 14, height = 8)
+
+
+ 
+rm(stats_df, stats_hyp_df_sup, stats_pacbio_df_hyp_notrim, not_used)
+
+
+
+```
+
+## S7: Quality of reads
+
+```{r}
+
+# ================================
+# 1. Directory with Q-bin TSV files
+# ================================
+indir <- paste0(WD, "/results/read_quality")
+
+files <- list.files(indir, pattern = "_Qbins.tsv$", full.names = TRUE)
+
+# ================================
+# 2. Function to extract metadata from filenames
+#    Format: method_primer_sample_reads_Qbins.tsv
+# ================================
+parse_qbin_file <- function(path) {
+  fname <- basename(path) |> gsub("_Qbins.tsv", "", x = _)
+  parts <- strsplit(fname, "_")[[1]]
+
+  tibble(
+    method = parts[1],
+    primer = parts[2],
+    sample = parts[3],
+    reads  = parts[4],
+    file   = path
+  )
+}
+
+metadata <- map_dfr(files, parse_qbin_file)
+seq_method_colors <- c("Pacbio" = "#CC007A", "ONT" = "#0077B6")
+
+# ================================
+# 3. Load Q-bin tables and merge with metadata
+# ================================
+df <- metadata %>%
+  mutate(data = map(file, ~ read_tsv(.x, show_col_types = FALSE))) %>%
+  unnest(data)
+
+# Ensure correct factor order (optional)
+df <- df %>%
+  mutate(adjust_cout = ifelse(primer == "V4", count, count/10)) %>% 
+  mutate(
+    method = factor(method, levels = c("pacbio", "super"),
+                    labels = c("PacBio", "ONT")),
+    primer = factor(primer, levels = c("V4", "V1V3", "V1V8", "OPR"), 
+                    labels = c("V4", "V1-V3", "V1-V8", "OPR")),
+    sample = factor(sample, levels = c("Zmock", "Zfecal", "AD", "WWTP", "Soil"))
+  ) 
+
+
+
+# ================================
+# 4. Compute median Q-bins (weighted by read count)
+# ================================
+
+
+# Function for weighted median (base R does not have one)
+weightedMedian <- function(x, w) {
+  w <- w / sum(w)
+  idx <- order(x)
+  x <- x[idx]
+  w <- w[idx]
+  cw <- cumsum(w)
+  x[which(cw >= 0.5)[1]]
+}
+
+median_df <- df %>%
+  group_by(method, primer, sample) %>%
+  summarise(
+    medianQ = weightedMedian(Q_bin, w = count),
+    .groups = "drop"
+  )
+
+
+
+# ================================
+# 4. Plot Q-score distributions
+# ================================
+p <- ggplot(df, aes(x = Q_bin, y = adjust_cout, color = method, fill = method)) +
+  geom_area(position = "identity", alpha = 0.35) +
+  # Add median lines
+  geom_vline(data = median_df,
+             aes(xintercept = medianQ, color = method),
+             linetype = "dashed", linewidth = 0.8, show.legend = F) +
+    # Add median lines
+  geom_text(data = median_df,
+             aes(x = medianQ + 3, color = method, label = medianQ, y = 2000), show.legend = F
+             ) +
+  facet_grid(sample ~ primer, scales = "free_y") +
+  scale_color_manual(values = c("PacBio" = "#CC007A",
+                                "ONT"    =  "#0077B6")) +
+  scale_fill_manual(values = c("PacBio" = "#CC007A",
+                               "ONT"    =  "#0077B6")) +
+  labs(
+    title = "Distributions of Mean Read Q-Scores",
+    x = "Mean Q-score",
+    y = "Read count",
+    color = "Sequencing method",
+    fill = "Sequencing method"
+  ) +
+  theme_marie_clean() + 
+  theme(axis.text.x = element_text(angle = 0, hjust = 0.5), 
+        strip.text = element_text(face = "bold"))
+
+print(p)
+
+
+plot_name="Fig_S7_Read_quality"
+plot_folder=folder_dir_supp
+ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".png"), width = 14, height = 8)
+
+
+rm(p, median_df, df, weightedMedian, metadata, parse_qbin_file, indir, files)
+
+```
+
+
+
+# Load reference amplicons
+
+- Load theoretical abundance
+- Load summery of reference sequences including distinct amplicon variants 
+
+```{r}
+
+load_reference_amplicons <- function(ref_dir = paste0(WD, "/data/Zmock_in_silico_amplicons")) {
+  # List all fasta/fa files
+  fasta_files <- list.files(ref_dir, pattern = "\\.(fa|fasta)$", full.names = TRUE)
+  
+  # Helper to read one file
+  read_fasta_headers <- function(file_path) {
+    # Extract primerset from file name (e.g. "V4_bacterial_amplicons.fasta" → "V4")
+    primerset <- stringr::str_extract(basename(file_path), "^[A-Za-z0-9]+")
+    
+    # Read only header lines
+    headers <- readLines(file_path)
+    headers <- headers[stringr::str_detect(headers, "^>")]
+    
+    # Extract species and copy number
+    tibble::tibble(
+      primerset = primerset,
+      header = stringr::str_remove(headers, "^>"),
+      species = stringr::str_extract(as.character(header), "^[^_;]+"),
+                                     #"^[A-Za-z_]+_[A-Za-z_]+"
+      copynumber = as.numeric(stringr::str_extract(header, "(?<=size=)\\d+"))
+    )
+  }
+  
+  # Apply to all files and combine
+  all_refs <- purrr::map_dfr(fasta_files, read_fasta_headers)
+  return(all_refs)
+}
+  
+ref_amplicons <- load_reference_amplicons() %>% 
+  group_by(primerset) %>% 
+  #dplyr::rename("header" = "Reference_ID") %>% 
+  dplyr::rename("Reference_ID" = "header") %>% 
+  mutate(total_correct_ASVs = n()) %>% 
+  mutate(
+    Reference_ID_old = Reference_ID,
+    Reference_ID = str_remove(Reference_ID,"_16S"),
+         Reference_ID = str_remove(Reference_ID,"_RC"), 
+         Reference_ID = str_remove(Reference_ID,"_chromosome"),
+         species = str_remove(species,"_RC"), 
+         species = str_remove(species,"_chromosome"),
+         species = str_replace_all(species,"_", " " ),
+         species = str_trim(species) 
+         ) %>% 
+  ungroup() %>% 
+  #group_by(primerset, species) %>% 
+  mutate(n_merged = str_count(Reference_ID, "_"), 
+         copynumber = copynumber + n_merged -1,
+         copynumber = if_else((str_detect(Reference_ID, "Salmonella_5") & primerset != "OPR"), copynumber+1, copynumber),   # manually checked - due to megered of Salmonella_2_4 inside Salmonella_5
+         clean_ID = str_replace(Reference_ID, "^([^_]+_[0-9]+).*", "\\1"),
+        Reference_ID = paste0(clean_ID, ";size=", copynumber)
+         ) %>% 
+  group_by(species, primerset) %>% 
+  mutate(
+    rRNA_Copy_No = sum(copynumber),
+    primerset = factor(primerset, levels = c("V4", "V1V3", "V1V8", "OPR")), 
+    ) %>% 
+  ungroup() %>% 
+  select(-clean_ID, -n_merged)
+
+rm(load_reference_amplicons)
+  
+
+mock_df <- tribble(
+  ~Species, ~Genome_Size_Mb, ~Ploidy, ~GC_Content, ~rRNA_Copy_No, ~Gram, ~mOTU_Counts, ~Abundance, ~Theoretical_GenomicDNA, ~Theoretical_16Sonly,
+  "Bacillus", 4.045, 1, 43.9, 10, "Positive", 9048, 11.86, 12, 17.4,
+  "Enterococcus", 2.845, 1, 37.5, 4, "Positive", 11322, 14.84, 12, 9.9,
+  "Escherichia", 4.875, 1, 46.7, 7, "Negative", 6994, 9.17, 12, 10.1,
+  "Lactobacillus", 1.905, 1, 52.4, 5, "Positive", 17081, 22.39, 12, 18.4,
+  "Listeria", 2.992, 1, 38.0, 6, "Positive", 11454, 15.01, 12, 14.1,
+  "Pseudomonas", 5.792, 1, 66.2, 4, "Negative", 4484, 5.88, 12, 4.2,
+  "Salmonella", 4.760, 2, 52.2, 7, "Negative", 7939, 10.41, 12, 10.4,
+  "Staphylococcus", 2.730, 1, 32.8, 6, "Positive", 7960, 10.43, 12, 15.5,
+  #"Saccharomyces cerevisiae", NA, 1, NA, NA, "Yeast", NA, NA, 2, NA,
+  #"Cryptococcus neoformans", NA, 1, NA, NA, "Yeast", NA, NA, 2, NA,
+  #"Propionibacterium acnes", NA, NA, NA, NA, "Positive", 1, 0.0013, NA, NA
+) %>% 
+  mutate(x = "x") %>% 
+  select(-GC_Content, -Ploidy, -Genome_Size_Mb, -Theoretical_GenomicDNA) 
+
+adjusted_df <- ref_amplicons %>% 
+  mutate(Species = str_remove_all(species, "_")) %>% select(-species) %>% 
+  left_join(mock_df) %>% 
+  arrange(primerset, Species) %>% 
+  group_by(primerset, Species) %>%
+  mutate(
+    #total_size = sum(copynumber , na.rm = TRUE),
+    Theoretical_16S_adjusted = Theoretical_16Sonly * (copynumber  / rRNA_Copy_No)
+  ) %>%
+  ungroup() %>%
+  arrange(primerset, Species)
+
+
+rm(mock_df)
+
+```
+
+#### Functions
+
+```{r}
+ADONIS_from_long_df <- function(
+    data = data_merged_all2,
+    tax_level = "Species", 
+    abun_limit = 0.1,
+    test_varibles = c("Investigator") 
+){
+  
+  if (tax_level == "Species") {
+    df_tax_level <- {{data}} %>% 
+      # mutate(samples = 
+      #          map(.x = samples, ~
+      #                ungroup(.) %>% 
+                     distinct(SampleID, Species, rel_abun_species) %>% 
+                     filter(!str_detect(Species, "unclassified")) %>% 
+                     mutate(over_limit = if_else(rel_abun_species >= abun_limit, T, F)) %>% 
+      #          )) %>% 
+      # unnest(samples) %>%
+      rename(
+        "Species" = "tax_level" ,
+        "rel_abun_species"="tax_abun" 
+      )
+     
+  } else if (tax_level == "Genus") {
+    df_tax_level <- {{data}} %>% 
+      # mutate(samples = 
+      #          map(.x = samples, ~
+      #                ungroup(.) %>% 
+                     distinct(SampleID, Genus, rel_abun_genus) %>% 
+                     filter(!str_detect(Genus, "unclassified")) %>% 
+                     mutate(over_limit = if_else(rel_abun_genus >= abun_limit, T, F)) %>% 
+      #          )) %>% 
+      # unnest(samples) %>% 
+      rename(
+        "Genus" = "tax_level" ,
+        "rel_abun_genus"="tax_abun" 
+      )
+     
+    
+  } else if (tax_level == "OTU") {
+    df_tax_level <- {{data}} %>% 
+      # mutate(samples = 
+      #          map(.x = samples, ~
+      #                ungroup(.) %>% 
+                     distinct(SampleID, OTU, count) %>% 
+                     #filter(!str_detect(Genus, "unclassified")) %>% 
+                     mutate(over_limit = if_else(count >= abun_limit, T, F)) %>% 
+               #)) %>% 
+      #unnest(samples) %>% 
+      rename(
+        "OTU" = "tax_level" ,
+        "count"="tax_abun" 
+      )
+    
+    print(df_tax_level)
+    
+  } else if (tax_level == "Family") {
+    
+    df_tax_level <- {{data}} %>% 
+      ungroup() %>% 
+      #mutate(samples = map(.x = samples, ~
+      #group_by(Family) %>% mutate(rel_abun_family = sum(count)) %>% ungroup() %>% 
+      #mutate(samples = 
+               #map(.x = samples, ~
+                     #ungroup(.) %>% 
+                     distinct(SampleID, Family, rel_abun_family) %>% 
+                     filter(!str_detect(Family, "unclassified")) %>% 
+                     mutate(over_limit = if_else(rel_abun_family >= abun_limit, T, F)) %>% 
+               #)) %>% 
+      #unnest(samples) %>% 
+      rename(
+        "Family" = "tax_level" ,
+        "rel_abun_family"="tax_abun"
+        ) 
+     
+  } else if (tax_level == "Order") {
+    
+    df_tax_level <- {{data}} %>% 
+      ungroup() %>% 
+      mutate(samples = map(.x = samples, ~group_by(.x, Order) %>% mutate(rel_abun_order = sum(rel_abun_ASV)) %>% ungroup())) %>% 
+      mutate(samples = 
+               map(.x = samples, ~
+                     ungroup(.) %>% 
+                     distinct(Order, rel_abun_order) %>% 
+                     filter(!str_detect(Order, "unclassified")) %>% 
+                     mutate(over_limit = if_else(rel_abun_order >= abun_limit, T, F))
+               )) %>% 
+      unnest(samples) %>% 
+      rename(
+        "tax_level" = "Order",
+        "tax_abun" = "rel_abun_order"
+      )
+  } else if (tax_level == "Class") {
+    
+    df_tax_level <- {{data}} %>% 
+      ungroup() %>% 
+      mutate(samples = map(.x = samples, ~group_by(.x, Class) %>% mutate(rel_abun_class = sum(rel_abun_ASV)) %>% ungroup())) %>% 
+      mutate(samples = 
+               map(.x = samples, ~
+                     ungroup(.) %>% 
+                     distinct(Class, rel_abun_class) %>% 
+                     filter(!str_detect(Class, "unclassified")) %>% 
+                     mutate(over_limit = if_else(rel_abun_class >= abun_limit, T, F))
+               )) %>% 
+      unnest(samples) %>% 
+      rename(
+        "tax_level" = "Class",
+        "tax_abun" = "rel_abun_class"
+      )
+  } else if (tax_level == "Phylum") {
+    
+    df_tax_level <- {{data}} %>% 
+      ungroup() %>% 
+      mutate(samples = map(.x = samples, ~group_by(.x, Phylum) %>% mutate(rel_abun_phylum = sum(rel_abun_ASV)) %>% ungroup())) %>% 
+      mutate(samples = 
+               map(.x = samples, ~
+                     ungroup(.) %>% 
+                     distinct(Phylum, rel_abun_phylum) %>% 
+                     filter(!str_detect(Phylum, "unclassified")) %>% 
+                     mutate(over_limit = if_else(rel_abun_phylum >= abun_limit, T, F))
+               )) %>% 
+      unnest(samples) %>% 
+      rename(
+        "tax_level" = "Phylum",
+        "tax_abun" = "rel_abun_phylum"
+      )
+  } else {
+    print("Check spelling of tax_level ")
+  }
+  
+  ## Filter low abundant Species
+  tax_over_limit <- 
+    df_tax_level %>% 
+    group_by(tax_level) %>% 
+    reframe(sum = sum(over_limit)) %>% 
+    filter(sum > 0) %>% 
+    distinct(tax_level) %>% unlist()
+  
+  df_tax_level_filtered <- 
+    df_tax_level %>% 
+    filter(tax_level %in% tax_over_limit)
+  
+  ## Calculate distance matrix 
+  abun_matrix <- df_tax_level_filtered %>% 
+    distinct(SampleID, tax_level, tax_abun) %>% 
+    pivot_wider(names_from = tax_level, values_from = tax_abun, values_fill = 0) %>% 
+    column_to_rownames("SampleID") %>% 
+    as.matrix()
+  
+  bray_curtis_dist <- vegan::vegdist((abun_matrix), method = "bray")
+  
+  print(bray_curtis_dist)
+  # 
+  # bc.dist.matrix <- 
+  #   vegan::vegdist(t(ampvis_object_fil$abund), method = distance_matrix)
+  # 
+  
+  adonis_of_differnet_varibles <- function(varibles_character){
+    
+    # Build metadata with a generic column name: test_var
+  metadata <- data %>%
+    dplyr::mutate(test_var = .data[[varibles_character]]) %>%  # <- key line
+    dplyr::distinct(SampleID, test_var)
+    
+  print(metadata)
+    # metadata <- 
+    #   data %>% 
+    #   rename(varibles_character = "test_var") %>% 
+    #   select(SampleID, test_var)
+    
+    var <- if_else(is.numeric(metadata$test_var),
+                   paste0("in the range: ", min(as.numeric(unique(metadata$test_var)), na.rm = T), "-", 
+                          max(as.numeric(metadata$test_var))),
+                   paste0(unique(as.character(metadata$test_var)),collapse = ", "))
+    
+    x <- vegan::adonis2(bray_curtis_dist ~ test_var, data = metadata)
+    
+    #a = cat("Test of **" varibles_character,"** R^2=", round(x$R2[1],2), ", p<", x$`Pr(>F)`[1])
+    b <- (paste0("<br>",tax_level," ADONIS analysis for **", varibles_character, "**. <br>", 
+                 "**R^2^=", round(x$R2[1],2), ", p<", x$`Pr(>F)`[1], "**. <br> ", 
+                 "The varibles tested are: *", 
+                 var, "*.<br>"))
+    
+    d <- tibble(
+      test = varibles_character, 
+      result = b
+    )
+    d
+  }
+  
+  list <- lapply(test_varibles, 
+                 FUN = adonis_of_differnet_varibles)
+  
+  do.call(rbind, list)
+  
+}
+
+
+
+
+
+
+
+```
+
+
+
+# Load data 
+
+```{r, eval=TRUE}
+
+folders <- c(
+  ### PACBIO
+  "pacbio_all_OPR_WWTP_minlength_1",
+  "pacbio_all_V1V3_WWTP_minlength_1", 
+  "pacbio_all_V1V8_WWTP_minlength_1",
+  "pacbio_all_V4_WWTP_minlength_1",
+  "pacbio_all_OPR_AD_minlength_1",
+  "pacbio_all_V1V3_AD_minlength_1", 
+  "pacbio_all_V1V8_AD_minlength_1",
+  "pacbio_all_V4_AD_minlength_1",
+  "pacbio_all_OPR_Soil_minlength_1",
+  "pacbio_all_V1V3_Soil_minlength_1", 
+  "pacbio_all_V1V8_Soil_minlength_1",
+  "pacbio_all_V4_Soil_minlength_1",
+  "pacbio_all_OPR_Zfecal_minlength_1",
+  "pacbio_all_V1V3_Zfecal_minlength_1", 
+  "pacbio_all_V1V8_Zfecal_minlength_1",
+  "pacbio_all_V4_Zfecal_minlength_1",
+  "pacbio_all_OPR_Zmock_minlength_1",
+  "pacbio_all_V1V3_Zmock_minlength_1", 
+  "pacbio_all_V1V8_Zmock_minlength_1",
+  "pacbio_all_V4_Zmock_minlength_1",
+  ####
+  "super_all_OPR_WWTP_minlength_1",
+  "super_all_V1V3_WWTP_minlength_1", 
+  "super_all_V1V8_WWTP_minlength_1",
+  "super_all_V4_WWTP_minlength_1",
+  "super_all_OPR_AD_minlength_1",
+  "super_all_V1V3_AD_minlength_1", 
+  "super_all_V1V8_AD_minlength_1",
+  "super_all_V4_AD_minlength_1",
+  "super_all_OPR_Soil_minlength_1",
+  "super_all_V1V3_Soil_minlength_1", 
+  "super_all_V1V8_Soil_minlength_1",
+  "super_all_V4_Soil_minlength_1",
+  "super_all_OPR_Zfecal_minlength_1",
+  "super_all_V1V3_Zfecal_minlength_1", 
+  "super_all_V1V8_Zfecal_minlength_1",
+  "super_all_V4_Zfecal_minlength_1",
+  "super_all_OPR_Zmock_minlength_1",
+  "super_all_V1V3_Zmock_minlength_1", 
+  "super_all_V1V8_Zmock_minlength_1",
+  "super_all_V4_Zmock_minlength_1"
+)
+
+# folders <- c("super_all_V1V8_Zmock_minlength_1",
+#   "super_all_V4_Zmock_minlength_1")
+
+```
+
+
+```{r}
+
+### Load results from all disinct runs (not in git)
+
+
+load_subsample_structure <- function(
+  folders,
+  base_dir = "/home/bio.aau.dk/hd95lp/Projects/RETHINK/p_nanopore_amplicon/6_snakemake_usearch_run_all"
+) {
+  
+  # ---- Helper: parse dataset folder name ----
+  parse_folder <- function(folder_name) {
+    parts <- str_split(folder_name, "_")[[1]]
+    
+    tibble(
+      dataset        = folder_name,
+      basecalling    = parts[1],
+      primerset      = parts[3],
+      sample_content = parts[4]
+    )
+  }
+  
+  # ---- Helper: extract barcodes + total reads from log ----
+  extract_log_info <- function(logfile) {
+    if (!file.exists(logfile)) {
+      return(
+        tibble(
+          barcodes = NA_character_,
+          total_reads = NA_real_
+        )
+      )
+    }
+    
+    log_txt <- readLines(logfile)
+    
+    # Extract barcodes
+    bc <- log_txt %>%
+      str_subset("cat tmp/02-trim_primers") %>%
+      str_extract_all("barcode[0-9]+") %>%
+      unlist() %>%
+      unique() %>%
+      paste(collapse = ",")
+    
+    # Extract total merged reads
+    n_reads <- log_txt %>%
+      str_subset("Total merged reads") %>%
+      str_extract("[0-9]+") %>%
+      as.numeric()
+    
+    tibble(
+      barcodes = ifelse(length(bc) == 0, NA_character_, bc),
+      total_reads = n_reads
+    )
+  }
+  
+  #dataset <- folders[1]
+  # ---- MAIN PROCESSING: per dataset ----
+  process_one_dataset <- function(dataset) {
+    
+    # parse metadata
+    meta <- parse_folder(dataset)
+    
+    # paths
+    subsample_dir <- file.path(base_dir, dataset, "output", "03-subsample")
+    log_file <- file.path(base_dir, dataset, "logs", "03-subsample", "concat_all_trimmed.log")
+    
+    # subsample folders
+    available <- list.files(subsample_dir, pattern = "^sample_size_", full.names = FALSE)
+    
+    # log info
+    log_info <- extract_log_info(log_file) %>% distinct()
+    
+    # Build tibble for each subsample
+    tibble(subsampling_group = available) %>%
+      mutate(
+        dataset        = dataset,
+        basecalling    = meta$basecalling,
+        primerset      = meta$primerset,
+        sample_content = meta$sample_content,
+        
+        # NEW: barcodes used for all rows
+        barcodes = log_info$barcodes,
+        
+        # reads_used
+        reads_used = case_when(
+          subsampling_group == "sample_size_all_reads" ~ log_info$total_reads,
+          TRUE ~ str_extract(subsampling_group, "[0-9]+") %>% as.numeric()
+        )
+      )
+  }
+  
+  # ---- Apply to all datasets ----
+  map_df(folders, process_one_dataset)
+}
+
+combined_summary <- load_subsample_structure(folders,
+  base_dir = "/home/bio.aau.dk/hd95lp/Projects/RETHINK/p_nanopore_amplicon/6_snakemake_usearch_run_all"
+)
+
+reads_used <- combined_summary %>% distinct(basecalling, primerset, sample_content , subsampling_group , reads_used )
+
+
+rm(folders, summarize_asv_counts, ASV_per_run, subsample_summary, load_multiple_ASV_runs, summarize_asv_counts)
+
+        
+
+```
+
+
+
+
+
+
+
+
+# ZymoMock analysis
+
+```{r}
+# --------------------------
+# File to translate to global ZOTU names
+# --------------------------
+
+base_dir <- paste0(WD, "/results/global_ASVs/")
+
+
+global_ASVs_all_load <- 
+  rbind(
+    vroom::vroom(paste0(base_dir, "V4/map_raw.tsv"), col_names = F, show_col_types = FALSE),
+    vroom::vroom(paste0(base_dir, "V1V3/map_raw.tsv"), col_names = F, show_col_types = FALSE),
+    vroom::vroom(paste0(base_dir, "V1V8/map_raw.tsv"), col_names = F, show_col_types = FALSE),
+    vroom::vroom(paste0(base_dir, "OPR/map_raw.tsv"), col_names = F, show_col_types = FALSE)
+  ) %>% 
+  separate(X1, into = c("ASV_ID", "basecalling", "rem", "primerset", "sample_content", "rem3", "rem6" , "subsampling_group"), extra = "merge") %>% 
+  mutate(fasta_ID = X2) %>%   
+  separate(X2, into = c("global_asv_id", "n_ASV_ID"), sep = ";") %>% 
+  filter(subsampling_group != "all_reads")
+
+global_ASVs_all_load %>% 
+  filter(sample_content == "Zmock") %>% 
+  group_by(primerset, basecalling) %>% 
+  summarise(n_ASV = n_distinct(global_asv_id))
+
+# --------------------------
+# Zmock - Matches between theoretical and generated
+# --------------------------
+
+global_ASVs_zymo_all <-  
+  global_ASVs_all_load %>%
+  filter(sample_content == "Zmock") #%>% 
+  #filter(basecalling != "hyper") #%>% 
+  #filter(subsampling_group == "sample_size_all_reads") 
+# %>% 
+#   distinct(global_asv_id, primerset, fasta_ID)
+
+
+exact_macthes <- 
+  rbind(
+    vroom::vroom(paste0(base_dir, "V4/global_ASVs_exact.tsv"), col_names = F, delim = "\t", show_col_types = FALSE),
+    vroom::vroom(paste0(base_dir, "V1V3/global_ASVs_exact.tsv"), col_names = F, delim = "\t", show_col_types = FALSE),
+    vroom::vroom(paste0(base_dir, "V1V8/global_ASVs_exact.tsv"), col_names = F, delim = "\t", show_col_types = FALSE),
+    vroom::vroom(paste0(base_dir, "OPR/global_ASVs_exact.tsv"), col_names = F, delim = "\t", show_col_types = FALSE)
+    ) %>% 
+  mutate(
+    Reference_ID = X2,
+    fasta_ID = X1, 
+    Match_type = "Exact"
+         ) %>% 
+    separate(X1, into = c("global_asv_id", "n_ASV_ID"), sep = ";") %>% 
+  filter(global_asv_id %in% unlist(global_ASVs_zymo_all$global_asv_id)) %>% 
+  select(-X2, -X3)
+
+partial_macthes <- 
+  rbind(
+    vroom::vroom(paste0(base_dir, "V4/global_ASVs_weak.tsv"), col_names = F, delim = "\t", show_col_types = FALSE),
+    vroom::vroom(paste0(base_dir, "V1V3/global_ASVs_weak.tsv"), col_names = F, delim = "\t", show_col_types = FALSE),
+    vroom::vroom(paste0(base_dir, "V1V8/global_ASVs_weak.tsv"), col_names = F, delim = "\t", show_col_types = FALSE),
+    vroom::vroom(paste0(base_dir, "OPR/global_ASVs_weak.tsv"), col_names = F, delim = "\t", show_col_types = FALSE)
+  ) %>% 
+  #separate(X2, into = c("ASV_ID", "basecalling", "rem", "primerset", "sample_content", "rem3", "rem6" , "subsampling_group"), extra = "merge") %>% 
+  mutate(
+    Reference_ID = X2,
+    fasta_ID = X1, 
+    Match_type = "Partial", 
+    Identity = X3,
+    qcov = X4,
+    tcov = X5, 
+    mismatches = X6,
+         ) %>% 
+    select(-X2, -X3, -X4, -X5, -X6) %>% 
+      separate(X1, into = c("global_asv_id", "n_ASV_ID"), sep = ";") %>% 
+    filter(global_asv_id %in% unlist(global_ASVs_zymo_all$global_asv_id))  %>% 
+    filter(!global_asv_id %in% unlist(exact_macthes$global_asv_id)) %>% 
+  arrange(global_asv_id, desc(Identity), desc(tcov), desc(qcov), mismatches) %>% 
+  distinct(global_asv_id, .keep_all = T) 
+
+
+# 
+zymo_matches <- 
+  full_join(exact_macthes, partial_macthes, by = join_by(global_asv_id, n_ASV_ID, Reference_ID, fasta_ID, Match_type)) %>% 
+  #dplyr::rename("Reference_ID" = "Reference_ID_old") %>% 
+  dplyr::rename("Reference_ID_old" = "Reference_ID") %>% 
+  left_join(ref_amplicons, by = join_by(Reference_ID_old))%>% 
+  select(-Reference_ID_old)
+
+
+
+global_ASVs_zymo_all_ref_match <- global_ASVs_zymo_all %>% 
+  left_join(zymo_matches, relationship = "many-to-many") %>% 
+  mutate(
+    Match_type = if_else(is.na(Match_type), "No match", Match_type), 
+    Match_type = factor(Match_type, levels = c("Exact", "Partial", "No match")),
+    Reference_ID = if_else(Match_type == "No match", "None", Reference_ID), 
+    species  = if_else(Match_type == "No match", "None", species), 
+    copynumber = if_else(Match_type == "No match", 0, copynumber ), 
+    total_correct_ASVs  = if_else(Match_type == "No match", 0, total_correct_ASVs  ), 
+    rRNA_Copy_No  = if_else(Match_type == "No match", 0, rRNA_Copy_No  ), 
+    Match_type_2 = factor(Match_type, levels = c("Exact", "Partial", "No match"), labels = c("Exact", "Non-exact", "Non-exact"))
+    )  
+  
+ 
+rm(partial_macthes, exact_macthes, zymo_matches)
+
+
+
+
+### save global id for all reads
+
+# save_global_zutu_subset <- function(primer){
+#   global_ASVs_zymo_all_ref_match %>% 
+#   filter(primerset == primer, subsampling_group == "sample_size_all_reads") %>% 
+#   distinct(global_asv_id ) %>% 
+#   write_csv(paste0("/home/bio.aau.dk/hd95lp/Projects/RETHINK/p_nanopore_amplicon/6_snakemake_usearch_run_all/global_ASVs_Ziels/pacbio_super/", primer, "_all_reads.csv"), col_names = F)
+# }
+# 
+# save_global_zutu_subset("V4")
+# save_global_zutu_subset("V1V8")
+# save_global_zutu_subset("V1V3")
+# save_global_zutu_subset("OPR")
+  
+  
+
+# save_global_zutu_subset <- function(primer = "V4", sample = "Zfecal"){
+#   global_ASVs_all_load %>% 
+#   filter(basecalling != "hyper") %>% 
+#   filter(primerset == primer, 
+#          subsampling_group == "sample_size_all_reads") %>%
+#   filter(sample_content == sample) %>% 
+#   distinct(global_asv_id ) %>% 
+#   write_csv(paste0("/home/bio.aau.dk/hd95lp/Projects/RETHINK/p_nanopore_amplicon/6_snakemake_usearch_run_all/global_ASVs_Ziels/pacbio_super/", primer, "_", sample, "_all_reads.csv"), col_names = F)
+# }
+
+
+#primers <- c("V4", "V1V3", "V1V8", "OPR")
+#samples <- unique(global_ASVs_all_load$sample_content)[c(1:2,3,5)]
+
+# for (p in primers) {
+#   for (s in samples) {
+#     message("Saving: ", p, " - ", s)
+#     save_global_zutu_subset(p, s)
+#   }
+# }
+
+
+rm(save_global_zutu_subset,primers, samples)
+```
+
+
+
+
+## Lenght distribution of seqs 
+
+```{r}
+
+
+f_OPR <- paste0(base_dir,"OPR/global_ASVs.fa")
+f_V4 <-  paste0(base_dir, "V4/global_ASVs.fa")
+f_V1V3 <- paste0(base_dir,"V1V3/global_ASVs.fa")
+f_V1V8 <- paste0(base_dir, "V1V8/global_ASVs.fa")
+
+
+# Put in a named vector so we keep primer names
+files <- c(OPR = f_OPR,
+           V4 = f_V4,
+           V1V3 = f_V1V3,
+           V1V8 = f_V1V8)
+
+
+# V4: 219 +- 50
+# V1V3: 507
+# V1V8: ~1400 bp to ~1500 bp
+
+
+# limits = tibble(
+#   primerset = c("V4", "V1V3", "V1V8", "OPR"), 
+#   min = c(169, 350, 1200, 4000), 
+#   max = c(269, 650, 1700 ,6000), 
+#   expected = c(219, 507, 1450, 4500)
+# )
+
+df_all <- map2_dfr(
+  .x = files,
+  .y = names(files),
+  .f = ~ {
+    seqs <- readDNAStringSet(.x)
+    tibble(
+      primerset = .y,
+      seq_name  = names(seqs),
+      length = Biostrings::width(seqs)
+    )
+  }
+) 
+
+refs_ASV <- global_ASVs_zymo_all_ref_match %>% 
+  filter(Match_type == "Exact") %>% distinct(global_asv_id)
+
+plot_df <- df_all %>% 
+  mutate(global_asv_id = sub(";.*", "", seq_name)) %>% 
+  left_join(global_ASVs_all_load %>% distinct(basecalling, primerset, sample_content, subsampling_group, global_asv_id)) %>% 
+  filter(subsampling_group == "sample_size_all_reads") %>% 
+  distinct(primerset , length, global_asv_id ,basecalling, sample_content)
+
+
+plot_df_refs <-  plot_df %>% 
+  filter(sample_content == "Zmock") %>% 
+  filter(global_asv_id %in% unlist(refs_ASV)) %>% 
+  distinct(global_asv_id, length, primerset) 
+
+plot_df_refs %>% 
+  group_by(length, primerset) %>%
+  reframe(n = n(),
+          #length = as.factor(length)
+          ) %>%
+  ggplot(., aes(x = length)) +
+  geom_histogram(binwidth = 10, fill = "steelblue", color = "transparent", alpha = 1) +
+  facet_wrap(~primerset, scales = "free", nrow = 1) +
+  labs(
+    title = "Length Distribution of Reference Amplicons",
+    x = "Sequence length (bp)",
+    y = "Count"
+  ) + 
+  theme_marie_clean()
+
+plot_df_refs_df <- plot_df_refs %>% 
+  group_by(primerset) %>%
+  summarise(range = max(length) - min(length), 
+            mean = mean(length), 
+            median = median(length),
+            max =  max(length), 
+            min = min(length)
+              ) %>% 
+  mutate(range_used = if_else(primerset == "V4", 10, range), 
+         range_mean_percent = median * 0.25,
+         limit_max = mean + range_mean_percent,  #(range_used*3), 
+         limit_min = mean - range_mean_percent#(range_used*3), 
+         ) 
+
+
+lenght_df_all <- 
+  plot_df %>% 
+  distinct(primerset, global_asv_id, length) %>% 
+  left_join(plot_df_refs_df %>% select(primerset, limit_max, limit_min)) 
+
+lenght_df <- lenght_df_all %>% 
+  filter(!(length > limit_min & length < limit_max))
+
+
+binwidths <- c(
+  "V4"   = 8,
+  "V1V3" = 15,
+  "V1V8" = 35,
+  "OPR"  = 100
+)
+
+seq_method_colors <- c(#"Pacbio" = 
+                         "#CC007A", 
+                       #"ONT" = 
+                         "#0077B6")
+
+
+plot_one_primer <- function(primer_name) {
+  
+  bw <- binwidths[[primer_name]]   # pick binwidth for this primer
+  
+  plot_df %>%
+        filter(primerset == primer_name) %>%
+        left_join(plot_df_refs_df) %>% 
+     mutate(
+      basecalling = factor(basecalling, levels = c("pacbio", "super"),
+                    labels = c("PacBio", "ONT")),
+    primerset = factor(primerset, levels = c("V4", "V1V3", "V1V8", "OPR"), 
+                    labels = c("V4 (bin: 8)", "V1-V3 (bin: 15)", "V1-V8 (bin: 35)", "OPR (bin: 100)")),
+    sample_content = factor(sample_content, levels = c("Zmock", "Zfecal", "AD", "WWTP", "Soil"))
+  ) %>% 
+    ggplot(aes(x = length, fill = basecalling)) +
+    geom_histogram(
+      binwidth = bw,
+      color = "black",
+      linewidth = 0.3,
+      alpha = 0.8
+    ) +
+    facet_nested(sample_content ~ primerset, scales = "free"#, space = "free"
+               ) +
+    geom_vline(aes(xintercept = limit_min), color = "red", linetype = 2) +
+    geom_vline(aes(xintercept = limit_max), color = "red", linetype = 2) +
+    geom_vline(aes(xintercept = median), color = "black", linetype = 2, linewidth = 1.3) +
+    scale_y_continuous(trans = "log10") +
+    scale_x_continuous(limits = c(0, NA)) +
+    scale_fill_manual(values = seq_method_colors) +
+    labs(
+      title = primer_name,
+      x = "Sequence length (bp)",
+      y = "ASV count",
+    ) +
+    theme_marie_clean() + 
+    guides(fill = guide_legend(title = "Sequencing platform")) +
+    theme(axis.text.x = element_text(angle = 0, hjust = 0.5),
+          strip.text = element_text(face = "bold"), 
+          #legend.title = element_blank()
+          )
+}
+
+p_V4   <- plot_one_primer("V4") + theme(strip.text.y = element_blank()) 
+p_V1V3 <- plot_one_primer("V1V3") + theme(strip.text.y = element_blank(), 
+                                          axis.title.y = element_blank(), 
+                                          axis.text.y = element_blank(), 
+                                          axis.ticks.y = element_blank()) 
+p_V1V8 <- plot_one_primer("V1V8") + theme(strip.text.y = element_blank(), 
+                                          axis.title.y = element_blank(), 
+                                          axis.text.y = element_blank(), 
+                                          axis.ticks.y = element_blank()) 
+p_OPR  <- plot_one_primer("OPR") + theme(#strip.text.y = element_blank(), 
+                                          axis.title.y = element_blank(), 
+                                          axis.text.y = element_blank(), 
+                                          axis.ticks.y = element_blank()) 
+
+p_V4 + p_V1V3 + p_V1V8 + p_OPR +
+  plot_layout(guides = "collect", ncol = 4) +
+  plot_annotation(#title = "Length Distribution of ASVs (Per Primer Binwidth)", 
+                  ) & theme(legend.position = "bottom")
+
+
+plot_name="Fig_S14_lenght_distribution"
+plot_folder=folder_dir_supp
+ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".png"), width = 14, height = 8)
+
+
+
+
+```
+
+
+
+### Table S3: Chimera detected / non-exact reads
+
+```{r}
+
+# Path to uchime_ref directory
+base_dir <- "/home/bio.aau.dk/hd95lp/Projects/RETHINK/ASV_resolved_community_with_ONT/postprocessing/results/uchime_ref"
+
+# Identify primer folders automatically
+primers <- list.dirs(base_dir, full.names = FALSE, recursive = FALSE)
+
+# Function to load one uchime table
+load_uchime_table <- function(primer) {
+  txt_path <- file.path(base_dir, primer, "asvs_uchime_ref.txt")
+
+  if (!file.exists(txt_path)) {
+    warning("No uchime table found for primer: ", primer)
+    return(NULL)
+  }
+
+  read_tsv(
+    txt_path,
+    col_names = FALSE,
+    comment = "#",
+    show_col_types = FALSE
+  ) %>%
+    mutate(
+      primerset = primer,
+      # Column 1 contains sequence ID → trim anything after semicolon
+      global_asv_id = sub(";.*", "", X1)
+    )
+}
+
+# Load all .txt files
+uchime_tables <- map_dfr(primers, load_uchime_table)
+
+uchime_tables
+
+
+
+
+
+summary_all_non_exact <- global_ASVs_zymo_all_ref_match %>% 
+  filter(subsampling_group == "sample_size_all_reads") %>% 
+  filter(Match_type != "Exact") %>%
+  arrange(basecalling) %>% 
+  group_by(global_asv_id, Match_type, Reference_ID, Identity,  qcov,  tcov, mismatches) %>% 
+  summarise(basecalling2 = paste0(unique(basecalling), collapse = ";")
+            ) %>% 
+  ungroup() %>% 
+  left_join(uchime_tables)  %>% 
+  left_join(lenght_df_all) %>% 
+  mutate(
+    "Sequencing platform" = basecalling2, 
+    "Chimera flag" = X3, 
+    "Chimera score" = X2, 
+  ) %>% 
+  select(global_asv_id, primerset, "Sequencing platform", length, 
+         Match_type, Reference_ID, Identity, qcov, tcov, mismatches, 
+         "Chimera flag", "Chimera score") %>% 
+  arrange(primerset, "Chimera flag", mismatches)
+  
+
+
+uchime_positives_zmock <- summary_all_non_exact %>% 
+  filter(`Chimera flag` == "Y")
+
+
+summary_all_non_exact_remain <- summary_all_non_exact %>% 
+  filter(global_asv_id %in% unlist(lenght_df$global_asv_id)) %>% 
+  filter(!global_asv_id %in% unlist(uchime_positives_zmock$global_asv_id))
+
+
+# pacman::p_load(flextable, officer)
+# library(flextable)
+# library(officer)
+# 
+# # Make flextable
+# ft <- flextable::flextable(summary_all_non_exact)
+# 
+# # Optional formatting
+# ft <- autofit(ft)
+# 
+# # Save to Word
+# doc <- read_docx()
+# doc <- body_add_flextable(doc, ft)
+# print(doc, target = paste0(plot_dir,"/" ,"tables", "/", "summary_all_non_exact_table.docx"))
+
+
+
+```
+
+
+
+
+## Reads vs. generated ASVs{.tabset}
+
+
+### Figure 2 
+
+```{r, include=FALSE}
+
+custom_breaks_minimal=c(0, 10, 100, 200, 1000,2000,  10000, 20000,100000, 200000,1000000) # Mortens suggestion
+custom_breaks_minimal=c(0, 10, 100, 1000,  10000,100000,1000000) # Mortens suggestion
+
+included_groups = c(
+  "sample_size_100", "sample_size_1000", "sample_size_10000" , "sample_size_100000" , "sample_size_1000000", 
+  "sample_size_500", "sample_size_5000", "sample_size_50000" , "sample_size_500000" ,
+  "sample_size_200", "sample_size_2000", "sample_size_20000" , "sample_size_200000" ,"sample_size_all_reads" 
+
+)
+
+
+# Create a label dataframe
+label_data <- ref_amplicons %>% 
+  distinct(primerset, total_correct_ASVs) %>%
+  cbind(tibble(x = c(210, 210, 210, 210))) %>% 
+  mutate(label = paste0("Theoretical ASV = ", total_correct_ASVs), 
+         #x = 1000, 
+         #y = total_correct_ASVs+0.25,
+         y = total_correct_ASVs + 3)
+
+
+
+# Summerise exact matches + total matches 
+ASV_matches_to_plot <- global_ASVs_zymo_all_ref_match %>% 
+  filter(!global_asv_id %in% unlist(lenght_df$global_asv_id)) %>% 
+  filter(!global_asv_id %in% unlist(uchime_positives_zmock$global_asv_id)) %>% 
+  filter(basecalling != "hyper") %>% 
+  filter(sample_content == "Zmock" ) %>% 
+  filter(subsampling_group %in% included_groups) %>% 
+  group_by(subsampling_group, Match_type_2, primerset, sample_content, basecalling) %>% 
+  summarise(n_ASV = n_distinct(global_asv_id)) %>% ungroup() %>% 
+  group_by(subsampling_group, primerset, sample_content, basecalling) %>% 
+  mutate(
+    total_ASVs = sum(n_ASV)
+  ) %>% 
+  ungroup() %>% 
+  filter(Match_type_2 == "Exact") %>% rename("n_ASV" = "exact_match") %>% 
+  select(-Match_type_2) %>% 
+  pivot_longer(cols = c(exact_match, total_ASVs), names_to = "ASV_type", values_to = "n_ASV") 
+  
+
+
+ASV_matches_complete <- ASV_matches_to_plot %>%
+  tidyr::complete(
+    subsampling_group,
+    primerset,
+    sample_content,
+    basecalling,
+    ASV_type,
+    fill = list(
+      n_ASV = 0
+      # optionally: total_correct_ASVs = 0
+    )
+  ) %>% 
+  left_join(reads_used, by = join_by(subsampling_group, primerset, sample_content, basecalling)) %>% 
+  left_join(ref_amplicons %>% 
+               distinct(primerset, total_correct_ASVs), by = join_by(primerset)) %>% 
+  left_join(reads_used %>% filter(subsampling_group == "sample_size_all_reads") %>% mutate(availible_reads = reads_used) %>% 
+              select(primerset, sample_content, basecalling, availible_reads), by = join_by(primerset, sample_content, basecalling)) %>% 
+  filter(reads_used <= availible_reads)
+
+
+
+plot_data <- ASV_matches_complete %>% 
+  mutate(basecalling  = factor(basecalling, levels =c("pacbio", "super"), labels = c("Pacbio", "ONT")),
+         Basecalling_Matchtype = factor(paste0(basecalling,"_",ASV_type),
+                                       levels = c(
+                                         "Pacbio_exact_match", "Pacbio_total_ASVs",
+                                         "ONT_exact_match",  "ONT_total_ASVs"), 
+                                       labels = c(
+                                         "Pacbio (exact match)", "Pacbio (all)",
+                                         "ONT (exact match)",  "ONT (all)")
+                                       ),
+         primerset = factor(primerset, levels = c("V4", "V1V3", "V1V8", "OPR"),
+                            labels = c("V4", "V1-V3", "V1-V8", "OPR")), 
+         ) 
+  
+custom_colors_fill = c(
+  "white",
+    #"#0077B6",
+     "white",
+    "#CC007A",
+    "#0077B6"
+    
+  )
+
+custom_colors_color = c(
+    "#CC007A",
+    "#CC007A",
+    "#0077B6",
+    "#0077B6"
+  )
+
+
+plot_data %>%
+  ggplot(., aes(x = reads_used, y = n_ASV)) +
+  geom_line(aes(group = Basecalling_Matchtype,
+                color = Basecalling_Matchtype, 
+                ), alpha = 0.9) +
+  geom_hline(aes(yintercept = total_correct_ASVs,
+                 #color = primerset
+                 ), #color = "gray19",
+             linetype = "dashed", color = "grey40", linewidth = 0.6
+             ) +
+   # =======================
+  #   POINTS — ALL ASVs
+  # =======================
+  geom_point(
+    data = ~ dplyr::filter(.x, ASV_type  == "total_ASVs"),
+    aes(color = Basecalling_Matchtype, fill = Basecalling_Matchtype, 
+        ),
+    shape = 21,
+    size = 3, #color = "#ECECEC"
+  ) +
+
+  # =======================
+  #   POINTS — EXACT MATCH
+  # =======================
+  geom_point(
+    data = ~ dplyr::filter(.x, ASV_type == "exact_match"),
+    aes(color = Basecalling_Matchtype, fill= Basecalling_Matchtype, 
+        ),
+    size = 3, 
+    shape = 21,
+  ) +
+  facet_grid(~primerset, scales = "free",
+             ) +
+  scale_x_log10(
+   breaks = c(custom_breaks_minimal),#custom_breaks_minimal,
+     labels = c(format(custom_breaks_minimal, big.mark = ",", scientific = FALSE))
+  ) +
+  scale_fill_manual(
+    values = custom_colors_fill, 
+    guide = "none" #guide_legend(override.aes = list(size = 3))
+  ) +
+  scale_color_manual(
+    values = custom_colors_color, 
+    guide = guide_legend(override.aes = list(size = 3, fill = c("#CC007A", "white","#0077B6", "white")))
+  ) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  geom_text(
+    data = label_data %>% mutate(primerset = factor(primerset, levels = c("V4", "V1V3", "V1V8", "OPR"),
+                            labels = c("V4", "V1-V3", "V1-V8", "OPR"))),
+    aes(
+      x = x,                 # left side of each facet
+      y = y,
+      label = label, 
+    ),
+    hjust = 0.1, vjust = 0,
+    inherit.aes = FALSE,
+    size = 4
+  ) +
+  theme_marie_clean(#bg = "#FAF9F6"
+                    bg = "#ECECEC"
+                    ) +   # light warm grey
+  theme(axis.title = element_text(face = "bold"),
+        strip.text.x = element_text(face = "bold", hjust = 0)) +
+  labs(
+    title = "Reads vs. unique ASVs",
+    x = "Number of reads",
+    y = "Number of ASVs",
+    color = ""
+  ) 
+
+plot_name="Fig_2"
+plot_folder=folder_dir_main
+#ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".png"), width = 14, height = 6)
+ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".svg"), width = 14, height = 6)
+#ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".pdf"), width = 14, height = 6, limitsize = F,  useDingbats=FALSE)
+
+rm(global_ASVs_zymo_all_with_hyper_ref_match)
+
+```
+
+
+### Figure S1: Fold reads difference
+
+```{r}
+
+################################
+# RELOAD PLOT DATA to include all generated subsample groups
+###############################
+
+custom_breaks_minimal=c(0, 10, 100, 1000,  10000, 100000, 1000000) # Mortens suggestion
+included_groups = c(
+  "sample_size_100", "sample_size_1000", "sample_size_10000" , "sample_size_100000" , "sample_size_1000000", 
+  "sample_size_500", "sample_size_5000", "sample_size_50000" , "sample_size_500000" , "sample_size_all_reads" 
+
+)
+
+
+# Create a label dataframe
+label_data <- ref_amplicons %>% 
+  distinct(primerset, total_correct_ASVs) %>%
+  cbind(tibble(x = c(210, 210, 210, 210))) %>% 
+  mutate(label = paste0("Theoretical ASV = ", total_correct_ASVs), 
+         #x = 1000, 
+         #y = total_correct_ASVs+0.25,
+         y = total_correct_ASVs + 3)
+
+
+
+# Summerise exact matches + total matches 
+ASV_matches_to_plot <- global_ASVs_zymo_all_ref_match %>% 
+  filter(!global_asv_id %in% unlist(lenght_df$global_asv_id)) %>% 
+  filter(!global_asv_id %in% unlist(uchime_positives_zmock$global_asv_id)) %>% 
+  filter(basecalling != "hyper") %>% 
+  filter(sample_content == "Zmock" ) %>% 
+  #filter(subsampling_group %in% included_groups) %>%    <---- REMOVE
+  group_by(subsampling_group, Match_type_2, primerset, sample_content, basecalling) %>% 
+  summarise(n_ASV = n_distinct(global_asv_id)) %>% ungroup() %>% 
+  group_by(subsampling_group, primerset, sample_content, basecalling) %>% 
+  mutate(
+    total_ASVs = sum(n_ASV)
+  ) %>% 
+  ungroup() %>% 
+  filter(Match_type_2 == "Exact") %>% rename("n_ASV" = "exact_match") %>% 
+  select(-Match_type_2) %>% 
+  pivot_longer(cols = c(exact_match, total_ASVs), names_to = "ASV_type", values_to = "n_ASV") 
+  
+
+
+ASV_matches_complete <- ASV_matches_to_plot %>%
+  tidyr::complete(
+    subsampling_group,
+    primerset,
+    sample_content,
+    basecalling,
+    ASV_type,
+    fill = list(
+      n_ASV = 0
+      # optionally: total_correct_ASVs = 0
+    )
+  ) %>% 
+  left_join(reads_used, by = join_by(subsampling_group, primerset, sample_content, basecalling)) %>% 
+  left_join(ref_amplicons %>% 
+               distinct(primerset, total_correct_ASVs), by = join_by(primerset)) %>% 
+  left_join(reads_used %>% filter(subsampling_group == "sample_size_all_reads") %>% mutate(availible_reads = reads_used) %>% 
+              select(primerset, sample_content, basecalling, availible_reads), by = join_by(primerset, sample_content, basecalling)) %>% 
+  filter(reads_used <= availible_reads)
+
+
+
+plot_data <- ASV_matches_complete %>% 
+  mutate(basecalling  = factor(basecalling, levels =c("pacbio", "super"), labels = c("Pacbio", "ONT")),
+         Basecalling_Matchtype = factor(paste0(basecalling,"_",ASV_type),
+                                       levels = c(
+                                         "Pacbio_exact_match", "Pacbio_total_ASVs",
+                                         "ONT_exact_match",  "ONT_total_ASVs"), 
+                                       labels = c(
+                                         "Pacbio (exact match)", "Pacbio (all)",
+                                         "ONT (exact match)",  "ONT (all)")
+                                       ),
+         primerset = factor(primerset, levels = c("V4", "V1V3", "V1V8", "OPR"),
+                            labels = c("V4", "V1-V3", "V1-V8", "OPR")), 
+         ) 
+  
+
+df <- 
+  plot_data %>% 
+  filter(ASV_type == "exact_match") %>% 
+  dplyr::select(primerset,sample_content, basecalling, n_ASV, reads_used, total_correct_ASVs)
+
+###############################################################
+# 1. Define linear-phase filter per primer
+###############################################################
+
+get_linear_filter <- function(df) {
+  prim <- unique(df$primerset)
+  if (length(prim) != 1) stop("get_linear_filter() expects a single primerset.")
+
+  max_true <- max(df$n_ASV)
+
+  if (prim == "V4") {
+    df %>% filter(n_ASV >= 1 & n_ASV < max_true)
+
+  } else if (prim %in% c("V1-V3", "V1-V8", "OPR")) {
+    df %>% filter(n_ASV >= 2 & n_ASV < 0.9 * max_true)
+
+  } else df
+}
+
+
+###############################################################
+# 2. Fit linear-phase model
+###############################################################
+
+fit_linear_phase <- function(df) {
+  df_lin <- get_linear_filter(df)
+
+  if (nrow(df_lin) < 2) return(NULL)
+
+  mod <- lm(n_ASV ~ log10(reads_used), data = df_lin)
+
+  pred_df <- tibble(
+    reads_used = seq(min(df_lin$reads_used),
+                     max(df_lin$reads_used), length.out = 200),
+    basecalling = unique(df$basecalling)
+  ) %>%
+    mutate(
+      log_reads  = log10(reads_used),
+      pred_nASV  = predict(mod, newdata = .)
+    )
+
+  list(
+    df_linear = df_lin,
+    model     = mod,
+    pred      = pred_df
+  )
+}
+
+
+###############################################################
+# 3. Compute #reads needed for ASV = 1
+###############################################################
+
+compute_reads_for_asv1 <- function(fit) {
+  if (is.null(fit)) return(NA_real_)
+  slope <- coef(fit$model)[2]
+  intercept <- coef(fit$model)[1]
+
+  if (slope <= 0) return(NA_real_)
+
+  reads <- 10^((5 - intercept) / slope)
+  reads
+}
+
+
+###############################################################
+# 4. Extract slope, R², and mean reads-per-ASV
+###############################################################
+
+extract_metrics <- function(fit) {
+  if (is.null(fit) || is.null(fit$model)) return(NULL)
+
+  df_lin <- fit$df_linear
+  slope  <- coef(fit$model)[2]
+  intercept <- coef(fit$model)[1]
+  r2 <- summary(fit$model)$r.squared
+  rpASV <- df_lin$reads_used / df_lin$n_ASV
+
+  tibble(
+    slope = slope,
+    intercept = intercept,
+    r2 = r2,
+    mean_reads_per_ASV = mean(rpASV),
+    median_reads_per_ASV = median(rpASV)
+  )
+}
+
+
+###############################################################
+# 5. MAIN PLOT FUNCTION: PacBio + ONT with annotations
+###############################################################
+
+plot_paired_linear <- function(df, primerset = "V4") {
+
+  dat <- df %>% filter(primerset == {{primerset}})
+  max_true <- max(dat$total_correct_ASVs)
+
+  pb  <- dat %>% filter(basecalling == "Pacbio") %>% fit_linear_phase()
+  ont <- dat %>% filter(basecalling == "ONT")    %>% fit_linear_phase()
+
+  # Extract metrics
+  pb_metrics  <- extract_metrics(pb)
+  ont_metrics <- extract_metrics(ont)
+
+  # Reads required for ASV = 1
+  pb_reads1  <- compute_reads_for_asv1(pb)
+  ont_reads1 <- compute_reads_for_asv1(ont)
+
+  # Fold-difference ONT / PacBio
+  fold_diff <- NA_real_
+  if (!is.na(pb_reads1) && !is.na(ont_reads1)) {
+    fold_diff <- ont_reads1 / pb_reads1
+  }
+
+  ###########################################################
+  # Create main plot
+  ###########################################################
+
+  #c("#CC007A", "#0077B6")
+  
+  p <- ggplot(dat, aes(x = reads_used, y = n_ASV, color = basecalling)) +
+    geom_point(size = 2.8, alpha = 0.9) +
+    geom_hline(yintercept = max_true, linetype = "dotted") +
+    scale_x_log10() +
+    scale_color_manual(values = c("Pacbio"="#CC007A","ONT"="#0077B6")) +
+    labs(
+      title =paste0(primerset, ": Max ASVs = ", max_true),
+      x = "Reads (log10 scale)",
+      y = "Number of ASVs"
+    ) +
+    theme_bw(base_size = 12) +
+    theme(
+      plot.title = element_text(face="bold"),
+      legend.position = "bottom"
+    ) + 
+    guides(color = guide_legend(title = "Sequencing platform")) 
+
+  ###########################################################
+  # Add PacBio fit + annotations
+  ###########################################################
+  if (!is.null(pb)) {
+    p <- p +
+      geom_line(data = pb$pred,
+                aes(x = reads_used, y = pred_nASV),
+                color = "#CC007A", linewidth = 1.2) +
+      geom_point(data = pb$df_linear,
+                 aes(x = reads_used, y = n_ASV),
+                 color = "#CC007A", size = 3, shape = 21)
+
+    if (!is.na(pb_reads1)) {
+      p <- p +
+        annotate("text",
+                 x = 100,#pb_reads1, 
+                 y =max_true*0.95, hjust = 0,
+                   fill = scales::alpha("white", 0.8),   # background with transparency
+                 label = paste0("PB: ~", format(round(pb_reads1), big.mark=","), 
+                                " reads (ASV=5)\nSlope=", signif(pb_metrics$slope,3),
+                                ", R²=", signif(pb_metrics$r2,3)),
+                 hjust = -0.1, color = "#CC007A", size = 3.1)
+    }
+  }
+
+  ###########################################################
+  # Add ONT fit + annotations
+  ###########################################################
+  if (!is.null(ont)) {
+    p <- p +
+      geom_line(data = ont$pred,
+                aes(x = reads_used, y = pred_nASV),
+                color = "#0077B6", linewidth = 1.2) +
+      geom_point(data = ont$df_linear,
+                 aes(x = reads_used, y = n_ASV),
+                 color = "#0077B6", size = 3, shape = 21)
+
+    if (!is.na(ont_reads1)) {
+      p <- p +
+        annotate("text",
+                 x = 100,#ont_reads1, 
+                 y = max_true*0.86, hjust = 0,
+                 label = paste0("ONT: ~", format(round(ont_reads1), big.mark=","), 
+                                " reads (ASV=5)\nSlope=", signif(ont_metrics$slope,3),
+                                ", R²=", signif(ont_metrics$r2,3)),
+                 hjust = -0.1, color = "#0077B6", size = 3.1)
+    }
+  }
+
+  ###########################################################
+  # Fold difference annotation
+  ###########################################################
+  if (!is.na(fold_diff)) {
+    p <- p +
+      annotate("text",
+               x = 100, #min(dat$reads_used)*6,
+               y = max_true*1.05,
+               hjust = 0,
+               label = paste0("ONT requires ~", signif(fold_diff,3),
+                              "× more reads (ASV = 5)"),
+               color = "black", size = 4)
+  }
+
+  p + theme_marie_clean() + 
+    theme(strip.text.x = element_text(face = "bold", hjust = 0)) + 
+    facet_grid(~primerset )
+}
+
+
+###############################################################
+# 6. Generate final patchwork
+###############################################################
+
+primer_levels <- c("V4", "V1-V3", "V1-V8", "OPR")
+
+
+plots <- lapply(primer_levels, \(p) plot_paired_linear(df, p))
+
+
+
+wrap_plots(plots, ncol = 4, axes = "collect", guides = "collect") & theme(legend.position = "bottom")
+
+plot_name="Fig_S1_Zmock_fold_difference"
+plot_folder=folder_dir_supp
+ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".svg"), width = 14, height = 7)
+
+
+```
+
+
+
+### Figure S2: with DADA pipeline (supplementary) --> need to fix chimera + lenght 
+
+- Uses the same plot_data as above!!!!!!
+
+
+
+```{r}
+# Load DADA2 data
+ # Filter for chimera
+ # Filter for lenght limits
+
+
+base_dir <- paste0(WD, "/results/DADA2_ASV_generation/global_ASVs_DADA2_/")
+
+global_ASV_mapped <- 
+  rbind(
+    vroom::vroom(paste0(base_dir, "global_ASVs_V4/map_raw.tsv"), col_names = F, show_col_types = FALSE),
+    vroom::vroom(paste0(base_dir, "global_ASVs_V1V3/map_raw.tsv"), col_names = F, show_col_types = FALSE),
+    vroom::vroom(paste0(base_dir, "global_ASVs_V1V8/map_raw.tsv"), col_names = F, show_col_types = FALSE),
+    vroom::vroom(paste0(base_dir, "global_ASVs_OPR/map_raw.tsv"), col_names = F, show_col_types = FALSE)
+  ) 
+  
+
+
+
+filter_by_length_limits_DADA <- 
+  rbind(
+    vroom::vroom(paste0(base_dir, "global_ASVs_V4/global_ASVs_V4_lengths.csv"), show_col_types = FALSE),
+    vroom::vroom(paste0(base_dir, "global_ASVs_V1V3/global_ASVs_V1V3_lengths.csv"),  show_col_types = FALSE),
+    vroom::vroom(paste0(base_dir, "global_ASVs_V1V8/global_ASVs_V1V8_lengths.csv"),  show_col_types = FALSE),
+    vroom::vroom(paste0(base_dir, "global_ASVs_OPR/global_ASVs_OPR_lengths.csv"),  show_col_types = FALSE)
+  ) %>% 
+  dplyr::rename("primerset" = "primer") %>% 
+  left_join(plot_df_refs_df) %>%      # Limits: from above
+  separate(global_otu_id, sep = ";", into = c("global_ASV", "rm3")) %>% select(-rm3) %>% 
+  filter(!(sequence_length  > limit_min & sequence_length  < limit_max))
+
+
+
+load_exact_matches_to_reference <- 
+  rbind(
+    vroom::vroom(paste0(base_dir, "global_ASVs_V4/global_ASVs_exact.tsv"), col_names = F, show_col_types = FALSE),
+    vroom::vroom(paste0(base_dir, "global_ASVs_V1V3/global_ASVs_exact.tsv"), col_names = F, show_col_types = FALSE),
+    vroom::vroom(paste0(base_dir, "global_ASVs_V1V8/global_ASVs_exact.tsv"), col_names = F, show_col_types = FALSE),
+    vroom::vroom(paste0(base_dir, "global_ASVs_OPR/global_ASVs_exact.tsv"), col_names = F, show_col_types = FALSE)
+  ) %>% 
+  mutate(exact_ASV = X1) %>% 
+  distinct(exact_ASV)
+
+base_dir <- paste0(WD, "/results/DADA2_ASV_generation/uchime_ref/")
+
+
+filter_by_chimera_DADA <- 
+  rbind(
+    vroom::vroom(paste0(base_dir, "V4/asvs_uchime_ref.txt"), col_names = F, show_col_types = FALSE),
+    vroom::vroom(paste0(base_dir, "V1V3/asvs_uchime_ref.txt"), col_names = F, show_col_types = FALSE),
+    vroom::vroom(paste0(base_dir, "V1V8/asvs_uchime_ref.txt"), col_names = F, show_col_types = FALSE),
+    vroom::vroom(paste0(base_dir, "OPR/asvs_uchime_ref.txt"), col_names = F, show_col_types = FALSE)
+  ) %>% 
+    separate(X1, sep = ";", into = c("global_ASV", "rm3", "dd")) %>% select(-rm3) %>% 
+  mutate(
+    chimera = X3,
+  ) %>% 
+  select(global_ASV, chimera) %>% 
+  filter(chimera == "Y")
+
+
+global_ASV_mapped_DADA2 <- global_ASV_mapped %>% 
+  separate(X1, sep = "_", into = c("seq", "basecalling" ,"primerset", "subsample_size", "reads", "rm", "ekstr", "rm2")) %>% 
+  separate(X2, sep = ";", into = c("global_ASV", "rm3")) %>%
+  mutate(
+    reads = as.numeric(rm),#) 
+    subsampling_group = if_else(is.na(reads), paste0("sample_size_", "all_reads"), paste0("sample_size_", reads))
+  ) %>% select(-ekstr, -rm) %>% 
+  mutate(ASV_type = if_else(global_ASV  %in% unlist(load_exact_matches_to_reference$exact_ASV), "Exact", "Non-exact"), 
+         filter = case_when(global_ASV %in% unlist(filter_by_chimera_DADA$global_ASV) ~ T, 
+                            global_ASV %in% unlist(filter_by_length_limits_DADA$global_ASV) ~ T, 
+                            .default = F
+                            )) %>% 
+  distinct(global_ASV, basecalling,seq, primerset, subsampling_group, ASV_type, filter) %>% 
+  filter(!filter) %>% 
+  group_by(basecalling,primerset, subsampling_group, ASV_type) %>% 
+  summarise(n_ASV = n(), 
+            sample_content = "Zmock")
+
+
+
+```
+
+
+
+```{r, include=FALSE}
+
+included_groups = c(
+  "sample_size_100", "sample_size_1000", "sample_size_10000" , "sample_size_100000" , "sample_size_1000000", 
+  "sample_size_500", "sample_size_5000", "sample_size_50000" , #"sample_size_500000" , 
+  "sample_size_all_reads" 
+
+)
+
+
+# # Root directory where all DADA2 results live
+# root <- "/home/bio.aau.dk/hd95lp/Projects/RETHINK/p_nanopore_amplicon/6_snakemake_usearch_run_all/DADA2_ASV_generation"
+# 
+# # Helper function: count sequences in fasta
+# count_fasta <- function(path) {
+#   if (!file.exists(path)) return(0)
+#   sum(readLines(path) %>% str_detect("^>"))
+# }
+# 
+# # Helper function: count lines in ASV_exact.tsv
+# count_exact <- function(path) {
+#   if (!file.exists(path)) return(0)
+#   readLines(path) %>% length()
+# }
+# 
+# # Find all dna-sequences.fasta files
+# fasta_files <- list.files(
+#   root,
+#   pattern = "dna-sequences\\.fasta$",
+#   recursive = TRUE,
+#   full.names = TRUE
+# )
+# 
+# summary_list <- map_df(fasta_files, function(fa) {
+#   
+#   # Extract metadata from folder structure
+#   # Example path:
+#   # .../DADA2_ASV_generation/super/V1V3/sample_size_100/repseqs/dna-sequences.fasta
+#   
+#   parts <- str_split(fa, "/", simplify = TRUE)
+#   
+#   basecalling <- parts[ncol(parts) - 4]
+#   primerset      <- parts[ncol(parts) - 3]
+#   subsampling_group  <- parts[ncol(parts) - 2]
+#   
+#   # Corresponding ASV_exact.tsv
+#   exact_path <- file.path(
+#     dirname(dirname(fa)),   # up two levels from repseqs/
+#     "ASV_exact.tsv"
+#   )
+#   
+#   tibble(
+#     basecalling = basecalling,
+#     primerset = primerset,
+#     subsampling_group  = subsampling_group ,
+#     "Non-exact" = count_fasta(fa),
+#     Exact = count_exact(exact_path), 
+#     sample_content = "Zmock"
+#   )
+# })
+
+# Print result
+#print(summary_list)
+
+custom_colors_color <- c(
+  "#CC007A",   # deep pink
+  "#CC007A",
+  "#FF8CCF",
+  "#FF8CCF",   # high-contrast light pink
+  "#0077B6",   # deep blue
+  "#0077B6",
+  "#9ADFFF",   # high-contrast light blue
+  "#9ADFFF",
+  "white", "white"
+)
+
+custom_colors_fill <- c(
+ "white",  # deep pink
+ "white",  # high-contrast light pink
+ "white",  # deep blue
+ "white", 
+ "#CC007A", 
+"#FF8CCF", 
+"#0077B6", 
+"#9ADFFF", 
+ "white",
+  "#0077B6", "white",  # deep blue
+  "#9ADFFF",  "white", # high-contrast light blue
+  "white", "white"
+)
+
+global_ASV_mapped_DADA2
+
+# Summerise exact matches + total matches 
+ASV_matches_to_plot <- global_ASV_mapped_DADA2 %>% 
+  #pivot_longer(cols = c(`Non-exact`, Exact), names_to = "ASV_type", values_to = "n_ASV") %>% 
+  #filter(basecalling != "hyper") %>% 
+  filter(sample_content == "Zmock" ) %>% 
+  filter(subsampling_group %in% included_groups) %>% 
+  group_by(subsampling_group, primerset, sample_content, basecalling) %>% 
+  mutate(
+    total_ASVs = sum(n_ASV)
+  ) %>% 
+  ungroup() %>% 
+  filter(ASV_type == "Exact") %>% rename("n_ASV" = "exact_match") %>% 
+  select(-ASV_type) %>% 
+  pivot_longer(cols = c(exact_match, total_ASVs), names_to = "ASV_type", values_to = "n_ASV") 
+  
+
+ASV_matches_complete <- ASV_matches_to_plot %>%
+  tidyr::complete(
+    subsampling_group,
+    primerset,
+    sample_content,
+    basecalling,
+    ASV_type,
+    fill = list(
+      n_ASV = 0
+      # optionally: total_correct_ASVs = 0
+    )
+  ) %>% 
+  left_join(reads_used, by = join_by(subsampling_group, primerset, sample_content, basecalling)) %>% 
+  left_join(ref_amplicons %>% 
+               distinct(primerset, total_correct_ASVs), by = join_by(primerset)) %>% 
+  left_join(reads_used %>% filter(subsampling_group == "sample_size_all_reads") %>% mutate(availible_reads = reads_used) %>% 
+              select(primerset, sample_content, basecalling, availible_reads), by = join_by(primerset, sample_content, basecalling)) %>% 
+  filter(reads_used <= availible_reads)
+
+
+plot_data_usearch <- plot_data %>% #from prevois plot
+  mutate(method = "usearch")
+  
+plot_data_DADA <- ASV_matches_complete %>% 
+  mutate(
+    method = "DADA",
+    basecalling  = factor(basecalling, levels =c("pacbio", "super"), labels = c("Pacbio", "ONT")),
+    Basecalling_Matchtype = factor(paste0(basecalling,"_",ASV_type),
+                                       levels = c(
+                                         "Pacbio_exact_match", "Pacbio_total_ASVs",
+                                         "ONT_exact_match",  "ONT_total_ASVs"), 
+                                       labels = c(
+                                         "Pacbio (exact match)", "Pacbio (all)",
+                                         "ONT (exact match)",  "ONT (all)")
+                                       ),
+         primerset = factor(primerset, levels = c("V4", "V1V3", "V1V8", "OPR"),
+                            labels = c("V4", "V1-V3", "V1-V8", "OPR")), 
+         ) 
+
+
+
+
+
+
+base_df <- tibble(
+  basecalling = c("Pacbio", "ONT (sup)", "DADA Pacbio", "DADA ONT (sup)")) %>% 
+  mutate(
+  basecalling = factor(c("Pacbio",  "ONT (sup)", "DADA Pacbio", "DADA ONT (sup)"), 
+                       levels = c("Pacbio",  "ONT (sup)", "DADA Pacbio", "DADA ONT (sup)")),
+  x = c(-Inf, -Inf, -Inf, -Inf),
+  y = c(-Inf, -Inf, -Inf, -Inf)
+)
+
+
+
+subset_not_run <- 
+  tibble(
+    primerset = c("V1-V3", "V1-V8", "V1-V8", "V1-V8","V1-V8", "OPR"),
+    subsampling_group = c("sample_size_all_reads", "sample_size_all_reads","sample_size_1000000", "sample_size_1000000","sample_size_all_reads","sample_size_all_reads"),
+    basecalling = c("ONT", "ONT", "ONT", "Pacbio", "Pacbio", "Pacbio")
+  )
+  
+
+
+rbind(
+  plot_data_usearch, plot_data_DADA
+) %>% 
+    anti_join(subset_not_run) %>% 
+  mutate(method_Matchtype = paste0(basecalling, "_",method, "_", ASV_type),
+         method_Matchtype = factor(method_Matchtype, 
+                                   levels = c(
+                                         "Pacbio_usearch_exact_match", "Pacbio_usearch_total_ASVs",
+                                         "Pacbio_DADA_exact_match", "Pacbio_DADA_total_ASVs",
+                                         "ONT_usearch_exact_match",  "ONT_usearch_total_ASVs",
+                                         "ONT_DADA_exact_match",  "ONT_DADA_total_ASVs")
+                                         ,
+                                  labels = c(
+                                         "Pacbio; usearch (exact_match)", "Pacbio; usearch (all)",
+                                         "Pacbio; DADA2 (exact match)", "Pacbio; DADA2 (all)",
+                                         "ONT; usearch (exact match)",  "ONT; usearch (all)",
+                                         "ONT; DADA2 (exact match)",  "ONT; DADA2 (all)")
+                                         
+         )) %>% 
+  ggplot(., aes(x = reads_used, y = n_ASV)) +
+  geom_line(aes(group = method_Matchtype,
+                color = method_Matchtype, 
+                ), alpha = 0.9) +
+  geom_hline(aes(yintercept = total_correct_ASVs,
+                 #color = primerset
+                 ), #color = "gray19",
+             linetype = "dashed", color = "grey40", linewidth = 0.6
+             ) +
+   # =======================
+  #   POINTS — ALL ASVs
+  # =======================
+  geom_point(
+    data = ~ dplyr::filter(.x, ASV_type  == "total_ASVs"),
+    aes(color = method_Matchtype, fill = method_Matchtype, 
+        ),
+    shape = 21,
+    size = 3, #color = "#ECECEC"
+  ) +
+
+  # =======================
+  #   POINTS — EXACT MATCH
+  # =======================
+  geom_point(
+    data = ~ dplyr::filter(.x, ASV_type == "exact_match"),
+    aes(color = method_Matchtype, fill= method_Matchtype, 
+        ),
+    size = 3, 
+    shape = 21,
+  ) +
+  facet_grid(basecalling~primerset, scales = "free",
+             ) +
+  scale_x_log10(
+   breaks = c(custom_breaks_minimal),#custom_breaks_minimal,
+     labels = c(format(custom_breaks_minimal, big.mark = ",", scientific = FALSE))
+  ) +
+  scale_fill_manual(
+    values = custom_colors_fill, 
+    guide = "none" #guide_legend(override.aes = list(size = 3))
+  ) +
+  scale_color_manual(
+    values = custom_colors_color, 
+    guide = guide_legend(override.aes = list(size = 3, fill = c("#CC007A", "white","#FF8CCF","white","#0077B6", "white", "#9ADFFF","white")))
+  ) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  geom_text(
+    data = label_data %>% mutate(primerset = factor(primerset, levels = c("V4", "V1V3", "V1V8", "OPR"),
+                            labels = c("V4", "V1-V3", "V1-V8", "OPR"))),
+    aes(
+      x = x,                 # left side of each facet
+      y = y,
+      label = label, 
+    ),
+    hjust = 0.1, vjust = 0,
+    inherit.aes = FALSE,
+    size = 4
+  ) +
+  theme_marie_clean(#bg = "#FAF9F6"
+                    bg = "#ECECEC"
+                    ) +   # light warm grey
+  theme(axis.title = element_text(face = "bold"),
+        strip.text.x = element_text(face = "bold", hjust = 0)) +
+  labs(
+    title = "Reads vs. unique ASVs",
+    x = "Number of reads",
+    y = "Number of ASVs",
+    color = ""
+  ) 
+
+
+plot_name="Fig_S2_DADA2_read_vs_generated_ASVs"
+plot_folder=folder_dir_supp
+ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".svg"), width = 15, height = 10)
+
+rm(base_df, df_filled, exiting_comb, missing, plot_data_DADA, plot_df, subset_not_run, ASV)
+
+
+```
+
+
+
+
+## Alpha og beta diversitet 
+
+```{r, load amp object}
+#------------------------------------------------------------
+# Function 2: Read ASV tables into ampvis 
+#------------------------------------------------------------
+read_and_format_to_amp_object <- function(
+  base_dir,
+  base_dir2, #= "/home/bio.aau.dk/hd95lp/Projects/RETHINK/p_nanopore_amplicon/6_snakemake_usearch_run_all",
+  primerset_name = "V1V3",
+  subsample_group = "all_reads",
+  global_ASVs_zymo_all_ref_match,
+  new_barcode,
+  type = "_exact"   # all
+  ) {
+  library(dplyr)
+  library(stringr)
+  library(readr)
+  library(tidyr)
+
+  # Helper to read ASV tables
+  read_asv_table <- function(file, method) {
+    first <- readLines(file, n = 1)
+    if (startsWith(first, "#")) {
+      header <- strsplit(sub("^#", "", first), "\t")[[1]]
+      df <- read_tsv(file, col_names = header, skip = 1, show_col_types = FALSE)
+    } else {
+      df <- read_tsv(file, show_col_types = FALSE)
+    }
+    names(df)[1] <- "OTU"
+    #names(df)[-1] <- paste0(method, "_", names(df)[-1])
+    df
+  }
+
+  # Subset glabal ASVs to the actual runs (rather than all)
+  generated_ASV_all_runs_super <- global_ASVs_zymo_all_ref_match %>%
+    #filter(basecalling == "super") %>% 
+    filter(sample_content == "Zmock", primerset == primerset_name) %>% #print(n = 19) %>% 
+    distinct(basecalling, global_asv_id )
+  
+  generated_ASV_all_runs_pacbio <- global_ASVs_zymo_all_ref_match %>%
+    #filter(basecalling == "pacbio") %>% 
+    filter(sample_content == "Zmock", primerset == primerset_name) %>% 
+    distinct(basecalling, global_asv_id)  
+  
+  
+  ### -----------------------------  
+  ### CASE 1: EXACT MATCH TABLES  
+  ### -----------------------------
+  if (type == "_exact") {
+
+    file_super  <- file.path(base_dir, primerset_name, "super_ASVtab.txt")
+    file_pacbio <- file.path(base_dir, primerset_name, "pacbio_ASVtab.txt")
+    print("hi")
+
+    df_super <- read_asv_table(file_super, "super") %>%
+      mutate(
+        ref_name = str_extract(OTU, "(?<=ref_)[^;]+"),
+        global_asv_id = str_extract(OTU, "(?<=asv_)[^;]+"),
+        basecalling = "super",
+      ) %>%
+      filter(global_asv_id %in% unlist(generated_ASV_all_runs_super$global_asv_id))
+
+    df_pacbio <- read_asv_table(file_pacbio, "pacbio") %>%
+      mutate(
+        ref_name = str_extract(OTU, "(?<=ref_)[^;]+"),
+        global_asv_id = str_extract(OTU, "(?<=asv_)[^;]+"), 
+        basecalling = "pacbio",
+      ) %>%
+      filter(global_asv_id %in% unlist(generated_ASV_all_runs_pacbio$global_asv_id))
+    
+    # Combine super + pacbio
+  df_combined <- full_join(df_super, df_pacbio) %>%
+    mutate(across(starts_with(c("barcode")), ~ replace_na(., 0))) %>%
+    filter(global_asv_id %in% unlist(global_ASVs_zymo_all_ref_match %>% distinct(global_asv_id)) | !is.na(ref_name)) %>%
+    select(-OTU) 
+  }
+  
+  
+   ### -----------------------------  
+  ### CASE 2: ALL ASVs (ABUND TABLE)
+  ### -----------------------------
+  if (type == "_all") {
+
+
+    
+    file_super <- file.path(base_dir2, "OTU_tab_global_ASVs", subsample_group,        # e.g. "all_reads"
+                            "Zmock",  primerset_name,         # e.g. "V1V3"
+                            "super_OTUtab.txt")
+
+      file_pacbio <- file.path(
+        base_dir2,"OTU_tab_global_ASVs",  subsample_group,    "Zmock",  primerset_name,    "pacbio_OTUtab.txt"
+      )
+
+    
+    #print("hi")
+    df_super <- read_asv_table(file_super, "super") %>%
+      mutate(
+        global_asv_id = OTU,
+        basecalling = "super",
+        primerset = primerset_name,
+        subsampling_group = paste0("sample_size_", subsample_group),
+        sample_content = "Zmock"
+      ) %>%
+      select(-OTU)# %>%
+      #left_join(global_ASVs_zymo_all_ref_match) #%>%
+      #select(-ASV_ID)
+
+    df_pacbio <- read_asv_table(file_pacbio, "pacbio") %>%
+      mutate(
+        global_asv_id = OTU,
+        basecalling = "pacbio",
+        primerset = primerset_name,
+        subsampling_group = paste0("sample_size_", subsample_group),
+        sample_content = "Zmock"
+      ) %>%
+      select(-OTU) #%>%
+      #left_join(global_ASVs_zymo_all_ref_match) %>%
+      #select(-ASV_ID)
+    
+    # Combine super + pacbio
+  df_combined <- full_join(df_super, df_pacbio) %>%
+    mutate(across(starts_with(c("barcode")), ~ replace_na(., 0))) %>%
+    filter(global_asv_id %in% unlist(global_ASVs_zymo_all_ref_match %>% distinct(global_asv_id))) %>% 
+    distinct()
+  }
+
+    # Rename barcode columns (safe)
+  barcode_cols <- grep("barcode", names(df_combined), value = TRUE)
+  names(df_combined)[names(df_combined) %in% barcode_cols] <- paste0(barcode_cols, type)
+  
+  abun <- 
+    df_combined %>% 
+    pivot_longer(cols = contains("barcode")) %>% 
+    pivot_wider(names_from = c(basecalling, name), values_from = value, values_fill = 0) %>% 
+    select(contains("barcode"), global_asv_id) %>% 
+    column_to_rownames("global_asv_id") %>% 
+    #select(-ref_name) %>% 
+    as.matrix()
+
+  
+  meta_data <- global_ASVs_zymo_all_ref_match %>%
+    distinct(primerset, basecalling, sample_content) %>% 
+    left_join(new_barcode, relationship = "many-to-many") %>% 
+    mutate(SampleID = paste0(basecalling, "_", barcode, type)) %>% 
+    relocate(SampleID)
+    
+  d_amp <- amp_load(
+    otutable = abun, 
+    metadata = meta_data
+  )
+  
+  d_amp
+}
+```
+
+
+## OTU tab {.tabset}
+
+### Function 
+
+```{r}
+
+run_diversity_pipeline <- function(
+  base_dir,
+  base_dir2,
+  primerset_name,
+  subsample_group = "all_reads",
+  global_ASVs_zymo_all_ref_match,
+  new_barcode,
+  type = "_all",
+  rarefy_depth = NULL,
+  seq_method_colors = c("#CC007A", "#0077B6"),
+  test_vec = c("barcode", "basecalling")
+) {
+  library(tidyverse)
+  library(ampvis2)
+  library(patchwork)
+  library(rstatix)
+  library(ggpubr)
+  library(forcats)
+
+  # === 1. Load ampvis object ===
+  amp_obj <- read_and_format_to_amp_object(
+    base_dir = base_dir,
+    base_dir2 = base_dir2,
+    primerset_name = primerset_name,
+    subsample_group = subsample_group,
+    global_ASVs_zymo_all_ref_match = global_ASVs_zymo_all_ref_match,
+    new_barcode = new_barcode,
+    type = type
+  )
+
+  # === (optional) rarefy ===
+  if (!is.null(rarefy_depth)) {
+    amp_obj <- amp_obj %>% amp_subset_samples(rarefy = rarefy_depth)
+  }
+
+  # === 2. Fix metadata ===
+  amp_obj$metadata <- amp_obj$metadata %>%
+    mutate(
+      type = sub(".*_", "", SampleID),
+      abun_tab = case_when(
+        type == "all" ~ "-otutab",
+        type == "exact" ~ "-search_exact"
+      ),
+      basecalling = factor(basecalling,
+                           levels = c("pacbio", "super"),
+                           labels = c("PacBio", "ONT"))
+    )
+
+  # === 3. Alpha diversity ===
+  amp_alpha_div <- amp_obj %>% amp_alpha_diversity()
+
+  plots_list <- amp_alpha_div %>%
+    select(-Simpson) %>%
+    pivot_longer(cols = c(uniqueOTUs, Shannon, invSimpson)) %>%
+    group_split(name)
+
+  make_plot <- function(df) {
+    name <- unique(df$name)
+
+    test_res <- df %>%
+      arrange(barcode) %>% 
+      rstatix::pairwise_t_test(value ~ basecalling,
+                               #paired = TRUE, 
+                               detailed = T, 
+                               #id = barcode,
+                               p.adjust.method = "BH")
+
+    comparisons <- list(c("PacBio", "ONT"))
+    
+    print(test_res)
+
+    ggplot(
+      df %>% mutate(x = ""),
+      aes(
+        x = basecalling,
+        y = value,
+        color = basecalling,
+        group = barcode
+      )
+    ) +
+      geom_point(
+        position = position_jitterdodge(
+          seed = 1,
+          jitter.width = 0.45,
+          dodge.width = 0.6
+        ),
+        size = 2.8,
+        stroke = 0.8
+      ) +
+      ggpubr::stat_compare_means(
+        comparisons = comparisons,
+        method = "t.test", #paired = T,
+        label = "p.signif", 
+        tip_length = unit(5, "mm"),
+        hide.ns = FALSE,
+        label.y = max(df$value) * 1.05
+      ) +
+      scale_color_manual(values = seq_method_colors) +
+      guides(color = "none", shape = "none") +
+      ylab(name) +
+      theme_marie_clean() +
+      theme(
+        axis.title.x = element_blank(),
+        legend.position = "none",
+        axis.text.x = element_text(angle = 0, hjust = 0.5),
+      ) +
+      scale_y_continuous(
+        limits = c(0, max(df$value) * 1.2),
+        expand = expansion(mult = c(0, 0.05))
+      )
+  }
+
+  plot_list <- lapply(plots_list, make_plot)
+  alpha_patchwork <- wrap_plots(plot_list, ncol = 3, guides = "collect")
+
+  # === 4. LONG DATA ===
+  df_long <- amp_obj %>%
+    amp_subset_samples(normalise = TRUE) %>%
+    amp_export_long()
+
+  # === 5. Compute OTU rank table ===
+  otu_rank_table <- df_long %>%
+    group_by(OTU) %>%
+    summarise(mean_abun = mean(count, na.rm = TRUE)) %>%
+    arrange(desc(mean_abun), OTU) %>%
+    mutate(ASV_rank = row_number())
+
+  # === 6. Heatmap ===
+  bin_colors <- c("#FFF5EB", "#F5C9B0", "#EC9E75", "#E2733B", "#D94801")
+
+  hm <- df_long %>%
+    left_join(otu_rank_table, by = "OTU") %>%
+    mutate(is_ref = OTU %in%
+             (global_ASVs_zymo_all_ref_match %>%
+                filter(Match_type == "Exact") %>%
+                pull(global_asv_id))) %>%
+    left_join(
+      global_ASVs_zymo_all_ref_match %>%
+        select(global_asv_id, species, copynumber) %>%
+        rename("global_asv_id" = "OTU")
+    ) %>%
+    group_by(OTU, basecalling, species, copynumber, ASV_rank, is_ref) %>%
+    summarise(mean_abun_2 = mean(count), .groups = "drop") %>%
+    mutate(
+      OTU_clean = paste0("ASV", ASV_rank),
+      # OTU_label = if_else(
+      #   is_ref,
+      #   paste0(species, "; ", OTU, " (n=", copynumber, ")"),
+      #   OTU
+      # ),
+     OTU_label = if_else(
+        is_ref,
+        paste0(species, "; ", str_replace(str_remove(OTU, primerset_name), "_GZOTU", "ASV"), " (n=", copynumber, ")"),
+        str_replace(str_remove(OTU, primerset_name), "_GZOTU", "ASV")
+      ),
+     OTU_label = if_else(
+        OTU %in% c(unlist(lenght_df$global_asv_id), unlist(uchime_positives_zmock$global_asv_id)),
+        paste0("•", OTU_label),
+        OTU_label
+      ),
+      mean_abun_2 = if_else(mean_abun_2 == 0, NA, mean_abun_2)
+    ) %>%
+    arrange(desc(ASV_rank)) %>% 
+    mutate(OTU_label = fct_inorder(OTU_label)) %>% 
+    ggplot(aes(x = basecalling, y = OTU_label, fill = mean_abun_2)) +
+    geom_tile(color = "white", linewidth = 0.3) +
+    geom_text(aes(label = if_else(mean_abun_2 == 0, "-", sprintf("%.1f", mean_abun_2))), size = 3.5) +
+    scale_fill_gradientn(colours = bin_colors, na.value = "grey90") +
+    labs(x = NULL, y = NULL, fill = "Relative\nabundance (%)") +
+    scale_y_discrete(expand = c(0, 0)) +
+    scale_x_discrete(expand = c(0, 0)) +
+    theme_minimal(base_size = 12) +
+    theme(
+      axis.text.y = element_text(size = 12, color = "black"),
+      axis.text.x = element_text(size = 12, , color = "black"),
+      panel.grid = element_blank(),
+      legend.position = "none"
+    )
+  
+
+  df_long_ <- df_long %>% as_tibble() %>% 
+      group_by(SampleID) %>% 
+      mutate(mapped_reads = sum(count)) %>% ungroup() %>% 
+      group_by(SampleID, OTU) %>% 
+      mutate(rel_abun_ASV = sum(count)) %>% ungroup() %>% 
+      group_by(SampleID, Species) %>% 
+      mutate(rel_abun_species = sum(rel_abun_ASV)) %>% ungroup() %>% 
+      group_by(SampleID, Genus) %>% 
+      mutate(rel_abun_genus = sum(rel_abun_ASV)) %>% ungroup() %>% 
+      # nest(samples = c(OTU, mapped_reads, count, Genus, Species,
+      #                  rel_abun_ASV, rel_abun_species, rel_abun_genus)) %>% 
+      left_join(new_barcode) %>% 
+      mutate(method_primerset = paste0(basecalling, ";",primerset), 
+             basecalling_new_barcode = paste0(basecalling, ";", new_barcode), 
+             )
+  
+  adonis_results <- ADONIS_from_long_df(
+    data = df_long_,
+    tax_level = "OTU", 
+    abun_limit = 0.1,
+    test_varibles = test_vec
+)
+  print(adonis_results)
+  
+
+  # === 7. Beta diversity ===
+  beta_div <- amp_obj %>%
+    amp_ordinate(
+      sample_color_by = "basecalling",
+      sample_shape_by = "barcode",
+      transform = "none",
+      type = "PCOA",
+      distmeasure = "bray",
+      filter_species = 0,
+      sample_label_size = 0
+    ) +
+    geom_point(size = 3.3, stroke = 0.8) +
+    scale_color_manual(values = seq_method_colors) +
+    guides(color = guide_legend(title = "Sequencing platform", nrow = 1),
+           shape = "none") +
+    theme_marie_clean() +
+    theme(legend.position = "bottom", 
+          axis.text.x = element_text(angle = 0, hjust = 0.5))
+
+  # === 8. Combine ===
+  right_side <- alpha_patchwork / beta_div  + plot_layout(heights = c(1.3, 1))
+  final_patchwork <- hm | right_side
+  final_patchwork <- final_patchwork + plot_layout(widths = c(0.4, 1)) + plot_annotation(tag_levels = "A")
+
+  
+  return(list(
+    amp_obj = amp_obj,
+    alpha_plots = alpha_patchwork,
+    heatmap = hm,
+    beta = beta_div,
+    combined = final_patchwork
+  ))
+}
+
+
+
+
+
+```
+
+
+
+### Figure 3: Alpha and betadiversity V1V8
+
+```{r, include=FALSE}
+
+res <- run_diversity_pipeline(
+  base_dir2 = paste0(WD, "/results/"),
+  primerset_name = "V1V8",
+  subsample_group = "all_reads",
+  global_ASVs_zymo_all_ref_match = global_ASVs_zymo_all_ref_match,
+  new_barcode = new_barcode,
+  type = "_all",
+  rarefy_depth = 228951, 
+  test_vec = c("basecalling", "barcode")
+)
+res$combined
+
+
+plot_name="Fig_3"
+plot_folder=folder_dir_main
+ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".svg"), width = 11, height = 8)
+
+
+
+```
+
+### Figure S3: V4:
+
+
+```{r, include=FALSE}
+res <- run_diversity_pipeline(
+  #base_dir = paste0(WD, "/results/OTU_tab_global_ASVs/all_reads/Zmock"),
+  base_dir2 = paste0(WD, "/results/"),
+  primerset_name = "V4",
+  subsample_group = "all_reads",
+  global_ASVs_zymo_all_ref_match = global_ASVs_zymo_all_ref_match,
+  new_barcode = new_barcode,
+  type = "_all",
+  rarefy_depth = 7173
+)
+
+res$combined
+plot_name="Fig_S3_Zmock_diversity_V4"
+plot_folder=folder_dir_supp
+ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".svg"), width = 12, height = 8)
+
+
+
+```
+
+### Figure S4: V1V3:
+
+
+```{r, include=FALSE}
+res <- run_diversity_pipeline(
+  #base_dir = paste0(WD, "/results/OTU_tab_global_ASVs/all_reads/Zmock"),
+    base_dir2 = paste0(WD, "/results/"),
+  primerset_name = "V1V3",
+  subsample_group = "all_reads",
+  global_ASVs_zymo_all_ref_match = global_ASVs_zymo_all_ref_match,
+  new_barcode = new_barcode,
+  type = "_all",
+  rarefy_depth = 24668, 
+  test_vec = c("basecalling", "barcode")
+)
+
+res$combined
+plot_name="Fig_S4_Zmock_diversity_V1V3"
+plot_folder=folder_dir_supp
+ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".svg"), width = 12, height = 8)
+
+
+
+```
+
+
+### Figure S5: OPR:
+
+
+```{r, include=FALSE}
+res <- run_diversity_pipeline(
+  #base_dir = paste0(WD, "/results/OTU_tab_global_ASVs/all_reads/Zmock"),
+    base_dir2 = paste0(WD, "/results/"),
+  primerset_name = "OPR",
+  subsample_group = "all_reads",
+  global_ASVs_zymo_all_ref_match = global_ASVs_zymo_all_ref_match,
+  new_barcode = new_barcode,
+  type = "_all",
+  rarefy_depth = 54149
+)
+
+res$combined
+plot_name="Fig_S5_Zmock_diversity_OPR"
+plot_folder=folder_dir_supp
+ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".svg"), width = 11, height = 12)
+
+
+
+```
+
+# Analysis of complex communities 
+
+
+```{r}
+
+## Manually add the "sample_size_5000000","sample_size_2000000" that werenot run initially (not included in git)
+
+# Folder with your *_exact.tsv files
+indir <- "/home/bio.aau.dk/hd95lp/Projects/RETHINK/p_nanopore_amplicon/6_snakemake_usearch_run_all/global_ASVs_Ziels/pacbio_super/new_subsets"
+
+# Find all exact match files
+files <- list.files(indir, pattern = "_exact.tsv$", full.names = TRUE)
+
+# Helper function to parse names from filename
+parse_filename <- function(path) {
+  name <- basename(path) %>% 
+    str_remove("_exact.tsv$")
+  
+  tibble(
+    basecalling  = ifelse(str_detect(name, "^super"), "super", "pacbio"), # adjust if needed
+    primerset    = str_extract(name, "OPR|V1V3|V1V8|V4"),
+    sample_content = str_extract(name, "WWTP|AD|Soil|Zfecal|Zmock"),
+    subsampling_group = ifelse(str_detect(path, "big"), "sample_size_5000000","sample_size_2000000")
+  )
+}
+
+
+# Read + parse all files
+global_ASVs_all_load_new_subsets <- map_dfr(files, function(f) {
+  
+  # Load exact matches
+  df <- read_tsv(f, col_names = c("ASV_ID", "global_asv_id", "percent_id"),
+                 col_types = "ccc")
+  
+  # Parse metadata from filename
+  meta <- parse_filename(f)
+  
+  # Add metadata columns
+  df %>%
+    mutate(
+      basecalling = meta$basecalling,
+      primerset = meta$primerset,
+      sample_content = meta$sample_content,
+      subsampling_group = meta$subsampling_group
+    ) %>%
+    select(ASV_ID, basecalling, primerset, sample_content, subsampling_group, global_asv_id) %>% 
+    mutate(global_asv_id = sub(";.*", "", global_asv_id))
+})
+
+global_ASVs_all_load_new_subsets 
+#global_ASVs_all_load_new_subsets %>% group_by(global_asv_id) %>% summarise(n = n())
+
+
+
+## Load all global AAV for complex (in git!)
+base_dir <- paste0(WD, "/results/global_ASVs/")
+
+global_ASVs_all_load <- 
+  rbind(
+    vroom::vroom(paste0(base_dir, "V4/map_raw.tsv"), col_names = F, show_col_types = FALSE),
+    vroom::vroom(paste0(base_dir, "V1V3/map_raw.tsv"), col_names = F, show_col_types = FALSE),
+    vroom::vroom(paste0(base_dir, "V1V8/map_raw.tsv"), col_names = F, show_col_types = FALSE),
+    vroom::vroom(paste0(base_dir, "OPR/map_raw.tsv"), col_names = F, show_col_types = FALSE)
+  )  %>% 
+  separate(X1, into = c("ASV_ID", "basecalling", "rem", "primerset", "sample_content", "rem3", "rem6" , "subsampling_group"), extra = "merge") %>% 
+  mutate(fasta_ID = X2) %>%   
+  separate(X2, into = c("global_asv_id", "n_ASV_ID"), sep = ";") %>% 
+  filter(subsampling_group != "all_reads") %>% 
+  select(-rem, -rem3, -rem6, -n_ASV_ID, -fasta_ID)
+
+
+included_groups = c(
+  "sample_size_100", "sample_size_1000", "sample_size_10000" , "sample_size_100000" , "sample_size_1000000", 
+  "sample_size_500", "sample_size_5000", "sample_size_50000" , "sample_size_500000" , 
+  "sample_size_2000000" , "sample_size_5000000" ,
+  "sample_size_2000", "sample_size_20000", "sample_size_200000",
+  "sample_size_all_reads" 
+)
+
+global_ASVs_combined <- 
+  rbind(global_ASVs_all_load_new_subsets, global_ASVs_all_load) %>% 
+  filter(sample_content != "Zmock") %>% 
+  select(-ASV_ID) %>% 
+  filter(subsampling_group %in% included_groups)
+  
+global_ASVs_combined 
+
+
+
+
+```
+
+
+
+## Reads vs. generated ASVs{.tabset}
+
+### Figure 4 
+
+```{r, include=FALSE}
+
+custom_breaks_minimal=c(0, 10, 100, 1000,  10000, 100000, 1000000) # Mortens suggestion
+
+# Make missing subset for pacbio and set these subset = all_reads for pacbio
+pacbio_all_reads <- global_ASVs_combined %>% 
+  filter(subsampling_group == "sample_size_all_reads" & basecalling == "pacbio") %>% 
+  select(-subsampling_group)
+
+missing_subsets_for_Pacbio <- 
+  global_ASVs_combined %>% 
+  distinct(subsampling_group, primerset, sample_content, basecalling) %>% 
+  group_by(subsampling_group, primerset, sample_content) %>% 
+  summarise(n = n(),basecalling =  paste0(basecalling, collapse = ";")) %>% ungroup() %>% 
+  filter(n == 1) %>% 
+  filter(basecalling == "super") %>% 
+  mutate(basecalling = "pacbio", 
+         subsampling_group_num = as.numeric(str_remove(subsampling_group, "sample_size_"))  
+         ) %>% 
+  left_join(reads_used %>% filter(subsampling_group == "sample_size_all_reads") %>% mutate(availible_reads = reads_used) %>% 
+              select(primerset, sample_content, basecalling, availible_reads), by = join_by(primerset, sample_content, basecalling)) %>% 
+  filter(subsampling_group_num >= availible_reads) %>% 
+  select(subsampling_group, primerset, sample_content, basecalling) %>% 
+  full_join(pacbio_all_reads, by = join_by(primerset, sample_content, basecalling))
+
+global_ASVs_combined_2 <- 
+  global_ASVs_combined %>% 
+  rbind(missing_subsets_for_Pacbio) %>% 
+  filter(!global_asv_id %in% unlist(lenght_df$global_asv_id)) 
+
+#check <- global_ASVs_combined_2 %>% 
+#  distinct(subsampling_group, primerset, sample_content, basecalling) %>% 
+#  group_by(subsampling_group, primerset, sample_content) %>% 
+#  summarise(n = n(),basecalling =  paste0(basecalling, collapse = ";")) %>% ungroup()
+
+total_ASVs <- global_ASVs_combined_2 %>% 
+  group_by(subsampling_group, primerset, sample_content, basecalling) %>% 
+  summarise(n_ASV = n_distinct(global_asv_id), 
+            ASV_type = paste0("total"), .groups = "drop") 
+
+
+shared_ASVs <- 
+  global_ASVs_combined_2 %>% 
+  arrange(basecalling) %>% 
+  group_by(subsampling_group, primerset, sample_content, global_asv_id) %>% 
+  mutate(n_ASV = n(), 
+            #basecalling = paste0(basecalling, collapse = ";")
+            ) %>% 
+  mutate(ASV_type = case_when(n_ASV == 1 ~ paste0(basecalling,"_" ,"unique"),
+                          n_ASV == 2 ~ paste0("shared")
+                          )) %>% 
+  filter(ASV_type == "shared") %>% 
+  group_by(subsampling_group, primerset, sample_content, basecalling, ASV_type) %>% 
+  summarise(n_ASV = n(),
+            ) %>% 
+  ungroup() %>% 
+  filter(basecalling == "pacbio") 
+
+shared_ASVs_dub <- rbind(
+  shared_ASVs,
+  shared_ASVs %>% mutate(basecalling = "super")
+  ) %>% 
+  rbind(total_ASVs)
+
+
+ASV_matches_complete <- shared_ASVs_dub %>%
+  tidyr::complete(
+    subsampling_group,
+    primerset,
+    sample_content,
+    basecalling,
+    ASV_type,
+    fill = list(
+      n_ASV = 0
+      # optionally: total_correct_ASVs = 0
+    )) %>% 
+  left_join(reads_used, by = join_by(subsampling_group, primerset, sample_content, basecalling)) %>% 
+  left_join(reads_used %>% filter(subsampling_group == "sample_size_all_reads") %>% mutate(availible_reads = reads_used) %>% 
+              select(primerset, sample_content, basecalling, availible_reads), by = join_by(primerset, sample_content, basecalling))  %>%   
+  filter(reads_used <= availible_reads)
+
+
+
+plot_data <- ASV_matches_complete %>% 
+  mutate(basecalling  = factor(basecalling, levels =c("pacbio", "super"), labels = c("Pacbio", "ONT")),
+                  sample_content = factor(sample_content, levels =c("Zmock", "Zfecal", "AD", "WWTP", "Soil")), 
+         Basecalling_Matchtype = factor(paste0(basecalling, "_",ASV_type),
+                                       levels = c(
+                                         "ONT_shared", 
+                                         "Pacbio_total",
+                                         "ONT_total",
+                                         "Pacbio_shared"),
+                                       labels = c(
+                                         "ONT (exact match)", 
+                                         "Pacbio (all)",
+                                         "ONT (all)",
+                                         "Pacbio_shared")),
+         primerset = factor(primerset, levels = c("V4", "V1V3", "V1V8", "OPR"),
+                            labels = c("V4", "V1-V3", "V1-V8", "OPR")), 
+         ) %>% 
+    filter(Basecalling_Matchtype != "Pacbio_shared") 
+  
+custom_colors_fill = c(
+  "white",
+    #"#0077B6",
+     "white","#0077B6",
+    "#CC007A",
+    "#0077B6"
+    
+  )
+
+custom_colors_color = c(
+  "#0077B6",  
+  "#CC007A",
+  "#0077B6",
+    "#CC007A",
+    "#0077B6",
+    "#0077B6"
+  )
+
+
+
+plot_complex_cummunities <- function(primerset_val){
+  plot_data %>%
+  filter(primerset == primerset_val) %>% 
+  ggplot(., aes(x = reads_used, y = n_ASV)) +
+  geom_line(aes(group = Basecalling_Matchtype,
+                color = Basecalling_Matchtype, 
+                ), alpha = 0.9) +
+  
+   # =======================
+  #   POINTS — ALL ASVs
+  # =======================
+  geom_point(
+    data = ~ dplyr::filter(.x, ASV_type  == "total"),
+    aes(color = Basecalling_Matchtype, fill = Basecalling_Matchtype, 
+        ),
+    shape = 21,
+    size = 3, #color = "#ECECEC"
+  ) +
+
+  # =======================
+  #   POINTS — EXACT MATCH
+  # =======================
+  geom_point(
+    data = ~ dplyr::filter(.x, ASV_type == "shared"),
+    aes(color = Basecalling_Matchtype, fill= Basecalling_Matchtype, 
+        ),
+    size = 3, 
+    shape = 21,
+  ) +
+  facet_grid(sample_content~primerset, scales = "free",
+             ) +
+  scale_x_log10(
+   breaks = c(custom_breaks_minimal),#custom_breaks_minimal,
+     labels = c(format(custom_breaks_minimal, big.mark = ",", scientific = FALSE))
+  ) +
+  scale_fill_manual(
+    values = custom_colors_fill, 
+    guide = "none" #guide_legend(override.aes = list(size = 3))
+  ) +
+  scale_color_manual(
+    values = custom_colors_color, 
+    guide = guide_legend(override.aes = list(size = 3, fill = c("#0077B6", "white","white")))
+  ) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  theme_marie_clean(#bg = "#FAF9F6"
+                    bg = "#ECECEC"
+                    ) +   # light warm grey
+  theme(axis.title = element_text(face = "bold"),
+        strip.text.x = element_text(face = "bold", hjust = 0),
+        strip.text.y = element_text(face = "bold")) +
+  labs(
+    title = "Reads vs. unique ASVs",
+    x = "Number of reads",
+    y = "Number of ASVs",
+    color = ""
+  ) 
+}
+
+
+
+plot_complex_cummunities(primerset_val = "V4") + theme(strip.text.y = element_blank()) +
+  plot_complex_cummunities(primerset_val = "V1-V3") + theme(strip.text.y = element_blank(), axis.title.y = element_blank()) +
+plot_complex_cummunities(primerset_val = "V1-V8") + theme(strip.text.y = element_blank(), axis.title.y = element_blank()) +
+plot_complex_cummunities(primerset_val = "OPR") + theme(axis.title.y = element_blank()) + 
+  plot_layout(ncol = 4, guides = "collect") & theme(legend.position = "bottom")
+
+
+
+
+plot_name="Fig_4"
+plot_folder=folder_dir_main
+ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".svg"), width = 14, height = 10)
+ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".png"), width = 14, height = 10)
+
+#ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".pdf"), width = 14, height = 7, limitsize = F,  useDingbats=FALSE)
+
+rm(global_ASVs_zymo_all_with_hyper_ref_match)
+
+```
+
+
+#### Number in article
+
+```{r}
+
+plot_data %>% 
+  select(-Basecalling_Matchtype, -reads_used, -availible_reads) %>% 
+  filter(subsampling_group == "sample_size_all_reads") %>% select(-subsampling_group) %>% 
+  pivot_wider(names_from = c(ASV_type, basecalling), values_from = n_ASV) %>% 
+  mutate(
+    diff_PB_shared = total_Pacbio-shared_ONT, 
+    diff_PB_shared_p = (total_Pacbio-shared_ONT)/(total_Pacbio+shared_ONT)*100, 
+    diff_ONT_shared = total_ONT -shared_ONT,
+    diff_ONT_shared_p = (total_ONT-shared_ONT)/(total_ONT+shared_ONT)*100, 
+    )
+
+plot_data %>% 
+  select(-Basecalling_Matchtype, -reads_used, -availible_reads) %>% 
+  filter(subsampling_group == "sample_size_1000000") %>% select(-subsampling_group) %>% 
+  pivot_wider(names_from = c(ASV_type, basecalling), values_from = n_ASV) %>% 
+  mutate(
+    diff_PB_shared = total_Pacbio-shared_ONT, 
+    diff_PB_shared_p = (total_Pacbio-shared_ONT)/(total_Pacbio+shared_ONT)*100, 
+    diff_ONT_shared = total_ONT -shared_ONT,
+    diff_ONT_shared_p = (total_ONT-shared_ONT)/(total_ONT+shared_ONT)*100, 
+    )
+
+```
+
+
+
+## Figure S6: Fold change complex communities
+
+
+```{r}
+
+df <- plot_data %>% 
+  filter(ASV_type == "total") %>% 
+  dplyr::select(primerset,sample_content, basecalling, n_ASV, reads_used)
+
+levels(plot_data$sample_content)
+
+####################################################################
+# 1. Linear-phase filter per primer
+####################################################################
+
+get_linear_filter <- function(df) {
+  prim <- unique(df$primerset)
+  if (length(prim) != 1) stop("get_linear_filter() expects a single primerset.")
+
+  if (prim == "V4") {
+    df %>% filter(n_ASV >= 1)
+
+  } else if (prim %in% c("V1-V3", "V1-V8", "OPR")) {
+    df %>% filter(n_ASV >= 2)
+
+  } else df
+}
+
+#get_linear_filter(df = dat)
+
+####################################################################
+# 2. Fit linear-phase model
+####################################################################
+
+fit_linear_phase <- function(df) {
+  df_lin <- get_linear_filter(df)
+
+  if (nrow(df_lin) < 2) return(NULL)
+  
+  #df_lin = dat
+
+  mod <- lm(n_ASV ~ log10(reads_used), data = df_lin)
+
+  pred_df <- tibble(
+    reads_used = seq(min(df_lin$reads_used),
+                     max(df_lin$reads_used), length.out = 200),
+    log_reads  = log10(reads_used),
+    pred_nASV  = predict(mod, newdata = tibble(log_reads = log10(seq(min(df_lin$reads_used),
+                                                                     max(df_lin$reads_used),
+                                                                     length.out = 200))))
+  )
+  pred_df$basecalling <- unique(df$basecalling)
+
+  list(
+    df_linear = df_lin,
+    model     = mod,
+    pred      = pred_df
+  )
+}
+
+#fit_linear_phase(dat)
+
+fit_loglog_phase <- function(df) {
+  # Same primer-based filtering as before
+  df_lin <- get_linear_filter(df) %>% 
+    filter(n_ASV > 0) %>%              # cannot take log10(0)
+    mutate(
+      log_reads = log10(reads_used),
+      log_ASV   = log10(n_ASV)
+    )
+
+  if (nrow(df_lin) < 2) return(NULL)
+
+  mod <- lm(log_ASV ~ log_reads, data = df_lin)
+
+  pred_df <- tibble(
+    reads_used = seq(min(df_lin$reads_used),
+                     max(df_lin$reads_used), length.out = 200)
+  ) %>%
+    mutate(
+      log_reads      = log10(reads_used),
+      pred_log_ASV   = predict(mod, newdata = cur_data()),
+      pred_nASV      = 10^pred_log_ASV,     # back-transform for plotting
+      basecalling    = unique(df$basecalling)
+    )
+
+  list(
+    df_linear = df_lin,
+    model     = mod,
+    pred      = pred_df
+  )
+}
+
+
+####################################################################
+# 3. Compute #reads needed for ASV = 1
+####################################################################
+
+compute_reads_for_asv1 <- function(fit) {
+  if (is.null(fit)) return(NA_real_)
+
+  slope <- coef(fit$model)[2]
+  intercept <- coef(fit$model)[1]
+
+  if (slope <= 0) return(NA_real_)
+
+  reads <- 10^((1 - intercept) / slope)
+  reads
+}
+
+compute_reads_for_asv <- function(fit, target_ASV = 1) {
+  if (is.null(fit)) return(NA_real_)
+  a <- coef(fit$model)[1]   # intercept (log_ASV)
+  b <- coef(fit$model)[2]   # slope
+
+  if (b <= 0) return(NA_real_)
+
+  log_target <- log10(target_ASV)
+  log_reads  <- (log_target - a) / b
+  10^log_reads
+}
+
+
+####################################################################
+# 4. Extract slope, R², mean reads-per-ASV
+####################################################################
+
+extract_metrics <- function(fit) {
+  if (is.null(fit)) return(NULL)
+
+  df_lin <- fit$df_linear
+  slope  <- coef(fit$model)[2]
+  intercept <- coef(fit$model)[1]
+  r2 <- summary(fit$model)$r.squared
+  rpASV <- df_lin$reads_used / df_lin$n_ASV
+
+  tibble(
+    slope = slope,
+    intercept = intercept,
+    r2 = r2,
+    mean_reads_per_ASV = mean(rpASV),
+    median_reads_per_ASV = median(rpASV)
+  )
+}
+
+
+####################################################################
+# 5. MAIN PLOT FUNCTION (PacBio + ONT for one primer × sample_content)
+####################################################################
+#primerset = "V4"
+#sample_content = "Zfecal"
+plot_paired_linear <- function(df, primerset, sample_content) {
+
+  dat <- df %>%
+    filter(primerset == {{primerset}} &
+           sample_content == {{sample_content}})
+  
+  print(dat)
+
+  #pb  <- dat %>% filter(basecalling == "Pacbio") %>% fit_linear_phase()
+  #ont <- dat %>% filter(basecalling == "ONT")    %>% fit_linear_phase()
+  
+  pb  <- dat %>% filter(basecalling == "Pacbio") %>% fit_loglog_phase()
+  ont <- dat %>% filter(basecalling == "ONT")    %>% fit_loglog_phase()
+
+  pb_metrics  <- extract_metrics(pb)
+  ont_metrics <- extract_metrics(ont)
+
+  #pb_reads1  <- compute_reads_for_asv1(pb)
+  #ont_reads1 <- compute_reads_for_asv1(ont)
+  
+  pb_reads1  <- compute_reads_for_asv(pb,  target_ASV = 100)
+  ont_reads1 <- compute_reads_for_asv(ont, target_ASV = 100)
+
+  
+  fold_diff <- if (!is.na(pb_reads1) && !is.na(ont_reads1))
+    ont_reads1 / pb_reads1 else NA_real_
+  
+  #slope_ratio <- pb_metrics$slope / ont_metrics$slope
+
+  # if (slope_ratio >= 1) {
+  # rate_text <- paste0("PB ~", signif(slope_ratio, 3), "× faster ASV gain")
+  # } else {
+  # rate_text <- paste0("ONT ~", signif(1/slope_ratio, 3), "× faster ASV gain")
+  # }
+
+  ############################################################
+  # Base plot
+  ############################################################
+
+  p <- ggplot(dat, aes(x = reads_used, y = n_ASV, color = basecalling)) +
+    geom_point(shape = 21, size = 3, stroke = 0.9, fill = "white") +
+    scale_x_log10() +
+    scale_y_log10() +
+    scale_color_manual(values = c("Pacbio"="#CC007A","ONT"="#0077B6")) +
+    labs(
+      #title = paste0(sample_content, " | ", {{primerset}}),
+      x = "Reads (log10 scale)",
+      y = "Number of ASVs  (log10 scale)",
+      color = "Sequencing platform"
+    ) +
+    theme_marie_clean() +
+    facet_grid(sample_content~primerset) +
+    theme(plot.title = element_text(face="bold"), 
+          strip.text = element_blank())
+
+  ############################################################
+  # Add fitted lines
+  ############################################################
+
+  if (!is.null(pb)) {
+    p <- p +
+      geom_line(data = pb$pred,
+                aes(x = reads_used, y = pred_nASV),
+                color = "#CC007A", linewidth = 1.2)
+  }
+
+  if (!is.null(ont)) {
+    p <- p +
+      geom_line(data = ont$pred,
+                aes(x = reads_used, y = pred_nASV),
+                color = "#0077B6", linewidth = 1.2)
+  }
+
+  ############################################################
+  # PacBio annotation
+  ############################################################
+
+  if (!is.na(pb_reads1)) {
+    p <- p +
+      annotate("label",
+               x = min(dat$reads_used)*1.2,
+               y = max(dat$n_ASV)*0.25,
+               hjust = 0,
+               fill = scales::alpha("white", 0.8),
+               label = paste0(
+                 "PB: ~", format(round(pb_reads1), big.mark=","),
+                 " reads (ASV=100)\nSlope=", signif(pb_metrics$slope,3),
+                 ", R²=", signif(pb_metrics$r2,3)
+               ),
+               color = "#CC007A", size = 3, label.size = 0)
+  }
+
+  ############################################################
+  # ONT annotation
+  ############################################################
+
+  if (!is.na(ont_reads1)) {
+    p <- p +
+      annotate("label",
+               x = 30000,#min(dat$reads_used)*1.2,
+               y = 10, #max(dat$n_ASV)*0.83,
+               hjust = 0,
+               fill = scales::alpha("white", 0.8),
+               label = paste0(
+                 "ONT: ~", format(round(ont_reads1), big.mark=","),
+                 " reads (ASV=100)\nSlope=", signif(ont_metrics$slope,3),
+                 ", R²=", signif(ont_metrics$r2,3)
+               ),
+               color = "#0077B6", size = 3, label.size = 0)
+  }
+
+  ############################################################
+  # Fold-difference annotation
+  ############################################################
+
+  if (!is.na(fold_diff)) {
+    p <- p +
+      annotate("text",
+               x = min(dat$reads_used)*1.2,
+               y = max(dat$n_ASV)*1.01,
+               hjust = 0,
+               label = #rate_text, 
+               paste0("ONT requires ~", signif(fold_diff,3),
+                                "× more reads (ASV = 100)"),
+               color = "black", size = 4)
+  }
+
+  return(p)
+}
+
+
+####################################################################
+# 6. Generate full primer × sample_content grid
+####################################################################
+
+
+
+primer_levels <- c("V4", "V1-V3", "V1-V8", "OPR")
+sample_contents <- c("Zfecal", "AD", "WWTP", "Soil")
+
+#p <- plot_paired_linear(df, primer_levels[[1]], sample_contents[[4]])
+
+
+plots <- purrr::cross_df(list(
+  primerset = primer_levels,
+  sample_content = sample_contents
+)) %>%
+  purrr::pmap(function(primerset, sample_content)
+    plot_paired_linear(df, {{primerset}}, {{sample_content}})
+  )
+
+plots[[1]] <- plots[[1]] + theme(strip.text.x = element_text(face="bold", size = 14, hjust = 0.5))
+plots[[2]] <- plots[[2]] + theme(strip.text.x = element_text(face="bold", size = 14, hjust = 0.5))
+plots[[3]] <- plots[[3]] + theme(strip.text.x = element_text(face="bold", size = 14, hjust = 0.5))
+plots[[4]] <- plots[[4]] + theme(strip.text.x = element_text(face="bold", size = 14, hjust = 0.5), 
+                                 strip.text.y = element_text(face="bold", size = 14, hjust = 0.5))
+plots[[8]] <- plots[[8]] + theme(strip.text.y = element_text(face="bold", size = 14, hjust = 0.5))
+plots[[12]] <- plots[[12]] + theme(strip.text.y = element_text(face="bold", size = 14, hjust = 0.5))
+plots[[16]] <- plots[[16]] + theme(strip.text.y = element_text(face="bold", size = 14, hjust = 0.5))
+
+
+wrap_plots(plots, ncol = length(primer_levels), axes = "collect_x", 
+           guides = "collect") & 
+  theme(legend.position = "bottom", axis.title.y = element_blank())
+
+
+plot_name="Fig_S6_complex_fold_difference"
+plot_folder=folder_dir_supp
+ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".svg"), width = 18, height = 12)
+
+```
+
+
+## Alpha and beta diversity 
+
+
+```{r}
+
+PCOA_from_long_df <- function(
+  data,
+  tax_level = "Species",
+  abun_limit = 0.1
+){
+ 
+
+  tax_level <- tolower(tax_level)
+
+  # mapping from user input to actual columns
+  abun_lookup <- c(
+    species = "rel_abun_species",
+    genus   = "rel_abun_genus",
+    family  = "rel_abun_family",
+    order   = "rel_abun_order",
+    class   = "rel_abun_class",
+    phylum  = "rel_abun_phylum",
+    otu = "rel_abun_ASV"
+  )
+
+  stopifnot(tax_level %in% names(abun_lookup))
+
+  tax_col  <- tax_level
+  abun_col <- abun_lookup[[tax_level]]
+
+  df <- data %>%
+  unnest(samples) %>% 
+  rename_with(tolower)
+  
+  df_tax <- df %>%
+  group_by(sampleid, tax_level = .data[[tax_col]]) %>%
+  distinct(sampleid, tax_level, .keep_all = T) %>% 
+  summarise(tax_abun = sum(.data[[abun_col]]), .groups = "drop") %>% 
+  #print(df_tax, n = 500)
+  filter(!str_detect(tax_level, "unclassified"))
+  # 
+  top_taxa <- df_tax %>%
+  group_by(tax_level) %>%
+  summarise(max_abun = max(tax_abun), .groups = "drop") %>%
+  filter(max_abun >= abun_limit) %>%
+  pull(tax_level)
+  
+  df_tax <- df_tax %>% filter(tax_level %in% top_taxa)
+  
+  abun_matrix <- df_tax %>%
+  pivot_wider(names_from = tax_level, values_from = tax_abun, values_fill = 0) %>%
+  column_to_rownames("sampleid") %>%
+  as.matrix()
+
+
+  # Bray Curtis + PCoA
+  bc <- vegan::vegdist(abun_matrix, method = "bray")
+  pcoa <- cmdscale(bc, eig = TRUE, add = TRUE)
+
+  pc_df <- as.data.frame(pcoa$points) %>%
+    rownames_to_column("SampleID") %>%
+    rename(V1 = "PCoA1", V2 = "PCoA2")
+
+  # keep all metadata but DO NOT map to aesthetics
+  meta_cols <- data %>%
+    distinct(SampleID, .keep_all = TRUE) %>%
+    select(-samples)
+
+  pc_df <- left_join(pc_df, meta_cols, by = "SampleID")
+
+  # raw plot
+  expl <- round(100 * pcoa$eig / sum(pcoa$eig), 1)
+
+  g <- ggplot(pc_df, aes(PCoA1, PCoA2)) +
+    geom_point(size = 0.1) +
+    theme_bw() +
+    labs(
+      x = glue::glue("PCoA1 ({expl[1]}%)"),
+      y = glue::glue("PCoA2 ({expl[2]}%)")
+    )
+
+  return(g)
+}
+```
+
+
+
+```{r, load amp object complex}
+
+
+read_sintax_conf80 <- function(file) {
+  library(readr)
+  library(dplyr)
+  library(stringr)
+  library(purrr)
+  library(tibble)
+  library(tidyr)
+
+  # 1) Read the SINTAX file: 4 tab-separated columns (id, tax_full, "+", tax_filtered)
+  df <- read_tsv(
+    file,
+    col_names = c("id", "tax_full", "plus", "tax_filtered"),
+    col_types = "cccc"#,
+    #delim = "\t"
+  ) %>%
+    mutate(
+      ASV  = sub(";size.*", "", id),
+      size = as.numeric(str_extract(id, "(?<=size=)\\d+"))
+    )
+
+  # 2) Extract filtered ranks (right side, already ≥ 0.8)
+  get_rank <- function(s, code) {
+    x <- str_extract(s, paste0(code, ":[^,]+"))
+    str_remove(x, paste0(code, ":"))
+  }
+
+  df <- df %>%
+    mutate(
+      domain = get_rank(tax_filtered, "d"),
+      phylum = get_rank(tax_filtered, "p"),
+      class  = get_rank(tax_filtered, "c"),
+      order  = get_rank(tax_filtered, "o"),
+      family = get_rank(tax_filtered, "f"),
+      genus  = get_rank(tax_filtered, "g"),
+      species = get_rank(tax_filtered, "s")
+    ) %>%
+    # 3) Ensure domain exists so downstream fills never crash
+    mutate(domain = if_else(is.na(domain), "domain_unknown", domain))
+
+  rank_order <- c("domain","phylum","class","order","family","genus","species")
+
+  # 4) Row-fill helper: fill missing ranks with "unclassified_<rankletter>__<last_good>"
+  fill_tax <- function(domain, phylum, class, order, family, genus, species) {
+    ranks <- c(domain, phylum, class, order, family, genus, species)
+    if (is.na(ranks[1])) ranks[1] <- "domain_unknown"
+
+    # last confident rank among domain..genus (1..6)
+    present <- which(!is.na(ranks[1:6]))
+    last_idx <- if (length(present) == 0) 1 else max(present)
+    last_good <- ranks[last_idx]
+    last_letter <- c("d","p","c","o","f","g")[last_idx]
+
+    # fill NAs from phylum..species using that last_good
+    for (i in 2:7) {
+      if (is.na(ranks[i])) {
+        ranks[i] <- paste0("unclassified_", last_letter, "__", last_good)
+      }
+    }
+    ranks
+  }
+
+  # 5) Apply per-row (returns a list of length-7 vectors); bind back to columns
+  filled <- pmap(df[, rank_order], fill_tax)
+  filled_mat <- do.call(rbind, filled)
+  filled_tbl <- as_tibble(filled_mat, .name_repair = ~ rank_order)
+  names(filled_tbl) <- rank_order
+
+  # 6) Final tidy table
+  out <- bind_cols(df %>% select(ASV, size), filled_tbl)
+  out
+}
+
+
+tax <- 
+  rbind(
+  read_sintax_conf80(paste0(base_dir, "V4/global_ASVs_MFD_sintax.sintax")),
+  read_sintax_conf80(paste0(base_dir, "V1V3/global_ASVs_MFD_sintax.sintax")),
+  read_sintax_conf80(paste0(base_dir, "V1V8/global_ASVs_MFD_sintax.sintax")),
+  read_sintax_conf80(paste0(base_dir, "OPR/global_ASVs_MFD_sintax.sintax"))
+  )
+rank_cols <- c("domain","phylum","class","order","family","genus","species")
+letter_map <- c(domain="d", phylum="p", class="c", order="o", family="f", genus="g", species="s")
+tax_globalzutu <- tax %>%
+  mutate(
+    across(
+      all_of(rank_cols),
+      ~ paste0(letter_map[cur_column()], "__", .x),
+      .names = "{.col}"
+    )
+  )
+
+
+#------------------------------------------------------------
+# Function 2: Read ASV tables into ampvis 
+#------------------------------------------------------------
+
+read_and_format_to_amp_object_complex <- function(
+  base_dir,
+  base_dir2, #= "/home/bio.aau.dk/hd95lp/Projects/RETHINK/p_nanopore_amplicon/6_snakemake_usearch_run_all",
+  tax = tax_globalzutu,
+  primerset_name = "V1V3",
+  subsample_group = "all_reads",
+  sample = "Zfecal",
+  global_ASVs_all_load,
+  new_barcode,
+  type = "_exact"   # all
+  ) {
+  library(dplyr)
+  library(stringr)
+  library(readr)
+  library(tidyr)
+
+  # Helper to read ASV tables
+  read_asv_table <- function(file, method) {
+    first <- readLines(file, n = 1)
+    if (startsWith(first, "#")) {
+      header <- strsplit(sub("^#", "", first), "\t")[[1]]
+      df <- read_tsv(file, col_names = header, skip = 1, show_col_types = FALSE)
+    } else {
+      df <- read_tsv(file, show_col_types = FALSE)
+    }
+    names(df)[1] <- "OTU"
+    #names(df)[-1] <- paste0(method, "_", names(df)[-1])
+    df
+  }
+
+  # Subset glabal ASVs to the actual runs (rather than all)
+  # generated_ASV_all_runs <- global_ASVs_zymo_all_ref_match %>%
+  #   filter(sample_content == sample, primerset == primerset_name) %>% #print(n = 19) %>% 
+  #   distinct(basecalling, global_asv_id )
+  
+ 
+  ### -----------------------------  
+  ### CASE 2: ALL ASVs (ABUND TABLE)
+  ### -----------------------------
+  if (type == "_all") {
+
+
+    paste0(base_dir2, "OTU_tab_global_ASVs", subsample_group,        # e.g. "all_reads"
+                            sample,  primerset_name,         # e.g. "V1V3"
+                            "super_OTUtab.txt")
+    file_super <- file.path(base_dir2, "OTU_tab_global_ASVs", subsample_group,        # e.g. "all_reads"
+                            sample,  primerset_name,         # e.g. "V1V3"
+                            "super_OTUtab.txt")
+
+    file_pacbio <- file.path(
+        base_dir2,"OTU_tab_global_ASVs",  subsample_group,    sample,  primerset_name,    "pacbio_OTUtab.txt"
+      )
+
+    
+    #print("hi")
+    df_super <- read_asv_table(file_super, "super") %>%
+      mutate(
+        global_asv_id = OTU,
+        basecalling = "super",
+        primerset = primerset_name,
+        subsampling_group = paste0("sample_size_", subsample_group),
+        sample_content = sample
+      ) %>%
+      select(-OTU)
+
+    df_pacbio <- read_asv_table(file_pacbio, "pacbio") %>%
+      mutate(
+        global_asv_id = OTU,
+        basecalling = "pacbio",
+        primerset = primerset_name,
+        subsampling_group = paste0("sample_size_", subsample_group),
+        sample_content = sample
+      ) %>%
+      select(-OTU) 
+    
+    # Combine super + pacbio
+  df_combined <- full_join(df_super, df_pacbio) %>%
+    mutate(across(starts_with(c("barcode")), ~ replace_na(., 0))) %>%
+    #filter(global_asv_id %in% unlist(global_ASVs_zymo_all_ref_match %>% distinct(global_asv_id))) %>% 
+    distinct()
+  }
+
+    # Rename barcode columns (safe)
+  barcode_cols <- grep("barcode", names(df_combined), value = TRUE)
+  names(df_combined)[names(df_combined) %in% barcode_cols] <- paste0(barcode_cols, type)
+  
+  abun <- 
+    df_combined %>% 
+    pivot_longer(cols = contains("barcode")) %>% 
+    pivot_wider(names_from = c(basecalling, name), values_from = value, values_fill = 0) %>% 
+    select(contains("barcode"), global_asv_id) %>% 
+    column_to_rownames("global_asv_id") %>% 
+    #select(-ref_name) %>% 
+    as.matrix()
+
+  
+  meta_data <- global_ASVs_all_load %>%
+    filter(
+      primerset == primerset_name,
+      subsampling_group == paste0("sample_size_", subsample_group),
+      sample_content == sample) %>% 
+    distinct(primerset, basecalling, sample_content) %>% 
+    left_join(new_barcode, relationship = "many-to-many") %>% 
+    mutate(SampleID = paste0(basecalling, "_", barcode, type)) %>% 
+    relocate(SampleID)
+    
+  d_amp <- amp_load(
+    otutable = abun, 
+    metadata = meta_data, 
+    taxonomy = tax
+  )
+  
+  d_amp
+}
+```
+
+
+
+```{r}
+run_diversity_pipeline <- function(
+  base_dir,
+  primerset_name,
+  subsample_group = "all_reads",
+  global_ASVs_zymo_all_ref_match,
+  new_barcode,
+  type = "_all",
+  rarefy_depth = NULL,
+  seq_method_colors = c("#CC007A", "#0077B6")
+) {
+  library(tidyverse)
+  library(ampvis2)
+  library(patchwork)
+  library(rstatix)
+  library(ggpubr)
+  library(forcats)
+
+  # === 1. Load ampvis object ===
+  amp_obj <- read_and_format_to_amp_object(
+    base_dir = base_dir,
+    primerset_name = primerset_name,
+    subsample_group = subsample_group,
+    global_ASVs_zymo_all_ref_match = global_ASVs_zymo_all_ref_match,
+    new_barcode = new_barcode,
+    type = type
+  )
+
+  # === (optional) rarefy ===
+  if (!is.null(rarefy_depth)) {
+    amp_obj <- amp_obj %>% amp_subset_samples(rarefy = rarefy_depth)
+  }
+
+  # === 2. Fix metadata ===
+  amp_obj$metadata <- amp_obj$metadata %>%
+    mutate(
+      type = sub(".*_", "", SampleID),
+      abun_tab = case_when(
+        type == "all" ~ "-otutab",
+        type == "exact" ~ "-search_exact"
+      ),
+      basecalling = factor(basecalling,
+                           levels = c("pacbio", "super"),
+                           labels = c("Pacbio", "ONT"))
+    )
+
+  # === 3. Alpha diversity ===
+  amp_alpha_div <- amp_obj %>% amp_alpha_diversity()
+
+  plots_list <- amp_alpha_div %>%
+    select(-Simpson) %>%
+    pivot_longer(cols = c(uniqueOTUs, Shannon, invSimpson)) %>%
+    group_split(name)
+
+  make_plot <- function(df) {
+    name <- unique(df$name)
+
+    test_res <- df %>%
+      rstatix::pairwise_t_test(value ~ basecalling,
+                               paired = FALSE,
+                               p.adjust.method = "BH")
+
+    comparisons <- list(c("Pacbio", "ONT"))
+
+    ggplot(
+      df %>% mutate(x = ""),
+      aes(
+        x = basecalling,
+        y = value,
+        color = basecalling,
+        group = barcode
+      )
+    ) +
+      geom_point(
+        position = position_jitterdodge(
+          seed = 1,
+          jitter.width = 0.45,
+          dodge.width = 0.6
+        ),
+        size = 2.8,
+        stroke = 0.8
+      ) +
+      ggpubr::stat_compare_means(
+        comparisons = comparisons,
+        method = "t.test", paired = FALSE,
+        label = "p.signif",
+        tip_length = unit(5, "mm"),
+        hide.ns = FALSE,
+        label.y = max(df$value) * 1.05
+      ) +
+      scale_color_manual(values = seq_method_colors) +
+      guides(color = "none", shape = "none") +
+      ylab(name) +
+      theme_marie_clean() +
+      theme(
+        axis.title.x = element_blank(),
+        legend.position = "none",
+        axis.text.x = element_text(angle = 0, hjust = 0.5),
+      ) +
+      scale_y_continuous(
+        limits = c(0, max(df$value) * 1.2),
+        expand = expansion(mult = c(0, 0.05))
+      )
+  }
+
+  plot_list <- lapply(plots_list, make_plot)
+  alpha_patchwork <- wrap_plots(plot_list, ncol = 3, guides = "collect")
+
+  # === 4. LONG DATA ===
+  df_long <- amp_obj %>%
+    amp_subset_samples(normalise = TRUE) %>%
+    amp_export_long()
+
+  # === 5. Compute OTU rank table ===
+  otu_rank_table <- df_long %>%
+    group_by(OTU) %>%
+    summarise(mean_abun = mean(count, na.rm = TRUE)) %>%
+    arrange(desc(mean_abun), OTU) %>%
+    mutate(ASV_rank = row_number())
+
+  # === 6. Heatmap ===
+  bin_colors <- c("#FFF5EB", "#F5C9B0", "#EC9E75", "#E2733B", "#D94801")
+
+  hm <- df_long %>%
+    left_join(otu_rank_table, by = "OTU") %>%
+    mutate(is_ref = OTU %in%
+             (global_ASVs_zymo_all_ref_match %>%
+                filter(Match_type == "Exact") %>%
+                pull(global_asv_id))) %>%
+    left_join(
+      global_ASVs_zymo_all_ref_match %>%
+        select(global_asv_id, species, copynumber) %>%
+        rename("global_asv_id" = "OTU")
+    ) %>%
+    group_by(OTU, basecalling, species, copynumber, ASV_rank, is_ref) %>%
+    summarise(mean_abun_2 = mean(count), .groups = "drop") %>%
+    mutate(
+      OTU_clean = paste0("ASV", ASV_rank),
+      OTU_label = if_else(
+        is_ref,
+        paste0(species, "; ", OTU_clean, " (n=", copynumber, ")"),
+        OTU_clean
+      ), 
+      mean_abun_2 = if_else(mean_abun_2 == 0, NA, mean_abun_2)
+    ) %>%
+    arrange(desc(ASV_rank)) %>% 
+    mutate(OTU_label = fct_inorder(OTU_label)) %>% 
+    ggplot(aes(x = basecalling, y = OTU_label, fill = mean_abun_2)) +
+    geom_tile(color = "white", linewidth = 0.3) +
+    geom_text(aes(label = if_else(mean_abun_2 == 0, "-", sprintf("%.1f", mean_abun_2))), size = 3.5) +
+    scale_fill_gradientn(colours = bin_colors, na.value = "grey90") +
+    labs(x = NULL, y = NULL, fill = "Relative\nabundance (%)") +
+    scale_y_discrete(expand = c(0, 0)) +
+    scale_x_discrete(expand = c(0, 0)) +
+    theme_minimal(base_size = 12) +
+    theme(
+      axis.text.y = element_text(size = 12, color = "black"),
+      axis.text.x = element_text(size = 12, , color = "black"),
+      panel.grid = element_blank(),
+      legend.position = "none"
+    )
+
+  # === 7. Beta diversity ===
+  beta_div <- amp_obj %>%
+    amp_ordinate(
+      sample_color_by = "basecalling",
+      sample_shape_by = "barcode",
+      transform = "none",
+      type = "PCOA",
+      distmeasure = "bray",
+      filter_species = 0,
+      sample_label_size = 0
+    ) +
+    geom_point(size = 3.3, stroke = 0.8) +
+    scale_color_manual(values = seq_method_colors) +
+    guides(color = guide_legend(title = "Sequencing platform", nrow = 1),
+           shape = "none") +
+    theme_marie_clean() +
+    theme(legend.position = "bottom", 
+          axis.text.x = element_text(angle = 0, hjust = 0.5))
+
+  # === 8. Combine ===
+  right_side <- alpha_patchwork / beta_div + plot_layout(heights = c(1.3, 1))
+  final_patchwork <- hm | right_side
+  final_patchwork <- final_patchwork + plot_layout(widths = c(0.4, 1))
+
+  
+  return(list(
+    amp_obj = amp_obj,
+    alpha_plots = alpha_patchwork,
+    heatmap = hm,
+    beta = beta_div,
+    combined = final_patchwork
+  ))
+}
+
+```
+
+
+### Across the sample contents{.tabset}
+ 
+ 
+
+```{r}
+merge_ampvis_samples <- function(
+  sample_contents,             # vector: e.g. c("Zfecal", "WWTP", "Biofilm", "AS")
+  base_dir,
+  primerset_name,
+  subsample_group,
+  tax,
+  global_ASVs_all_load,
+  new_barcode,
+  type = "_all"
+){
+
+  # Load each sample_content as an ampvis object
+  amp_list <- lapply(sample_contents, function(sc) {
+    read_and_format_to_amp_object_complex(
+      base_dir2 = file.path(base_dir),
+      primerset_name = primerset_name,
+      subsample_group = subsample_group,
+      sample = sc,
+      tax = tax,
+      global_ASVs_all_load = global_ASVs_all_load,
+      new_barcode = new_barcode,
+      type = type
+    )
+  })
+
+  # merge all ampvis objects sequentially
+  merged_amp <- Reduce(
+    f = function(a, b) amp_merge_ampvis2(a, b, by_refseq = FALSE),
+    x = amp_list
+  )
+
+  return(merged_amp)
+}
+
+```
+
+
+
+```{r}
+
+seq_method_colors <- c("PacBio" = "#CC007A", "ONT" = "#0077B6")
+
+# --------------------------
+# 1. Build the plotting function
+# --------------------------
+
+make_alpha_plot <- function(df_metric) {
+  
+  metric_name <- unique(df_metric$name)
+  
+  # Wilcoxon test per sample_content
+  pvals <- df_metric %>%
+    group_by(sample_content) %>% 
+    # pairwise_wilcox_test(    
+    #   value ~ basecalling,
+    #   paired = TRUE,
+    #   p.adjust.method = "BH"
+    # ) %>%
+    pairwise_t_test(    
+      value ~ basecalling,
+      paired = FALSE,
+      p.adjust.method = "BH"
+    ) %>%
+    add_significance("p.adj") %>%
+      mutate(p.signif = p.adj.signif) %>%   # <-- add this line
+    add_xy_position(
+      x = "basecalling",
+      fun = "max",
+      dodge = 0.6
+    )
+  
+  print(pvals)
+  
+  ggplot(
+    df_metric,
+    aes(
+      x = basecalling,
+      y = value,
+      color = basecalling,
+      group = barcode
+    )
+  ) +
+    geom_point(
+      position = position_jitterdodge(
+        jitter.width = 0.4,
+        dodge.width = 0.6
+      ),
+      size = 3
+    ) +
+    
+    stat_pvalue_manual(
+      pvals,
+      label = "p.signif",
+      tip.length = 0.01,
+      size = 4,
+      hide.ns = FALSE
+    ) +
+    
+    scale_color_manual(values = seq_method_colors) +
+    
+    facet_grid(
+      rows = vars(name),
+      cols = vars(sample_content),
+      scales = "free_y",
+      #switch = "x"
+    ) +
+    
+    ylab(metric_name) +
+    xlab(NULL) +
+    
+    theme_marie_clean(bg = "#ECECEC") +
+    theme(
+      legend.position = "none",
+      strip.text = element_text(face = "bold"),
+      axis.text.x = element_text(angle = 0, hjust = 0.5),
+      strip.placement = "outside",
+      axis.title.y = element_text(face = "bold"),
+  
+       # Only keep the column strips (AD, Soil, WWTP, Zfecal)
+     strip.text.y = element_blank(),
+     strip.background.y = element_blank(),
+  
+    # Keep column strips at the top
+      # strip.text.x = element_text(face = "bold", size = 14),
+    strip.background.x = element_rect(fill = "white")
+    ) +
+    scale_y_continuous(
+      limits = c(0, max(df_metric$value) * 1.25),
+      expand = expansion(mult = c(0, 0.05))
+    )
+}
+
+
+```
+
+
+```{r}
+
+
+fig_4B_ordinations <- function(
+  amp_obj,
+  new_barcode,
+  type = "_all",
+  rarefy_depth = NULL,
+  seq_method_colors = c("#CC007A", "#0077B6"),
+  test_vec = c("primerset", "new_barcode", "basecalling", "method_primerset")
+) {
+  library(tidyverse)
+  library(ampvis2)
+  library(patchwork)
+  library(rstatix)
+  library(ggpubr)
+  library(forcats)
+
+  # # === 1. Load ampvis object ===
+  # amp_obj <- read_and_format_to_amp_object(
+  #   base_dir = base_dir,
+  #   primerset_name = primerset_name,
+  #   subsample_group = subsample_group,
+  #   global_ASVs_zymo_all_ref_match = global_ASVs_zymo_all_ref_match,
+  #   new_barcode = new_barcode,
+  #   type = type
+  # )
+  # 
+  # # === (optional) rarefy ===
+  # if (!is.null(rarefy_depth)) {
+  #   amp_obj <- amp_obj %>% amp_subset_samples(rarefy = rarefy_depth)
+  # }
+  # 
+  # # === 2. Fix metadata ===
+  amp_obj$metadata <- amp_obj$metadata %>%
+    mutate(
+      type = sub(".*_", "", SampleID),
+      abun_tab = case_when(
+        type == "all" ~ "-otutab",
+        type == "exact" ~ "-search_exact"
+      ),
+      basecalling = factor(basecalling,
+                           levels = c("pacbio", "super"),
+                           labels = c("PacBio", "ONT"))
+    )
+  
+
+  # === 4. LONG DATA ===
+  df_long <- amp_obj %>%
+    amp_subset_samples(normalise = TRUE) %>%
+    amp_export_long()
+
+  # === 5. Compute OTU rank table ===
+  otu_rank_table <- df_long %>%
+    group_by(OTU) %>%
+    summarise(mean_abun = mean(count, na.rm = TRUE)) %>%
+    arrange(desc(mean_abun), OTU) %>%
+    mutate(ASV_rank = row_number()) %>% 
+    slice_min(ASV_rank, n = 30)
+
+  # === 6. Heatmap ===
+  bin_colors <- c("#FFF5EB", "#F5C9B0", "#EC9E75", "#E2733B", "#D94801")
+  hm_title <- df_long %>% distinct(sample_content) %>% unlist()
+
+  hm <- df_long %>%
+    inner_join(otu_rank_table, by = "OTU") %>%
+    # mutate(is_ref = OTU %in%
+    #          (global_ASVs_zymo_all_ref_match %>%
+    #             filter(Match_type == "Exact") %>%
+    #             pull(global_asv_id))) %>%
+    # left_join(
+    #   global_ASVs_zymo_all_ref_match %>%
+    #     select(global_asv_id, species, copynumber) %>%
+    #     rename("global_asv_id" = "OTU")
+    # ) %>%
+    group_by(OTU, basecalling, ASV_rank, sample_content) %>%
+    summarise(mean_abun_2 = mean(count), .groups = "drop") %>%
+    mutate(
+      OTU_clean = paste0(ASV_rank),
+      OTU_label = OTU_clean,
+      mean_abun_2 = if_else(mean_abun_2 == 0, NA, mean_abun_2)
+    ) %>%
+    arrange(desc(ASV_rank)) %>% 
+    mutate(OTU_label = fct_inorder(OTU_label)) %>% 
+    ggplot(aes(x = basecalling, y = OTU_label, fill = mean_abun_2)) +
+    geom_tile(color = "white", linewidth = 0.3) +
+    geom_text(aes(label = if_else(mean_abun_2 == 0, "-", sprintf("%.2f", mean_abun_2))), size = 3.5) +
+    facet_grid(~sample_content) + 
+    scale_fill_gradientn(colours = bin_colors, na.value = "grey90") +
+    labs(x = NULL, y = NULL, fill = "Relative\nabundance (%)") +
+    scale_y_discrete(expand = c(0, 0)) +
+    scale_x_discrete(expand = c(0, 0)) +
+    theme_minimal(base_size = 12) +
+    theme(
+      axis.text.y = element_text(size = 12, color = "black"),
+      strip.text.x = element_text(hjust = 0.5, face = "bold", size = 15, color = "black"),
+      axis.text.x = element_text(size = 12, , color = "black"),
+      axis.ticks.x = element_line(color = "black"),
+      panel.grid = element_blank(),
+      legend.position = "none"
+    )
+
+  # === 7. Beta diversity (Bray) ===
+  beta_div <- amp_obj %>%
+    amp_ordinate(
+      sample_color_by = "basecalling",
+      sample_shape_by = "barcode",
+      transform = "none", 
+      type = "PCOA",
+      distmeasure = "bray",
+      filter_species = 0.1,
+      sample_label_size = 0
+    ) +
+    geom_point(size = 3.3, stroke = 0.8) +
+    scale_color_manual(values = seq_method_colors) +
+    guides(color = guide_legend(title = "Sequencing platform", nrow = 1),
+           shape = "none") +
+    theme_marie_clean() +
+    theme(legend.position = "bottom", 
+          axis.text.x = element_text(angle = 0, hjust = 0.5))
+  
+  df_long_ <- df_long %>% as_tibble() %>% 
+      group_by(SampleID) %>% 
+      mutate(mapped_reads = sum(count)) %>% ungroup() %>% 
+      group_by(SampleID, OTU) %>% 
+      mutate(rel_abun_ASV = sum(count)) %>% ungroup() %>% 
+      group_by(SampleID, Species) %>% 
+      mutate(rel_abun_species = sum(rel_abun_ASV)) %>% ungroup() %>% 
+      group_by(SampleID, Genus) %>% 
+      mutate(rel_abun_genus = sum(rel_abun_ASV)) %>% ungroup() %>%
+      group_by(SampleID, Family) %>% mutate(rel_abun_family = sum(rel_abun_ASV)) %>% ungroup() %>% 
+      # nest(samples = c(OTU, mapped_reads, count, Genus, Species,
+      #                  rel_abun_ASV, rel_abun_species, rel_abun_genus)) %>% 
+      left_join(new_barcode) %>% 
+      mutate(method_primerset = paste0(basecalling, ";",primerset), 
+             basecalling_new_barcode = paste0(basecalling, ";", new_barcode), 
+             )
+  
+  adonis_results <- ADONIS_from_long_df(
+    data = df_long_,
+    tax_level = "OTU", 
+    abun_limit = 0.1,
+    test_varibles = test_vec
+)
+  print(adonis_results)
+  
+  #  # === 7. Beta diversity (Bray) ===
+  # beta_div_pa <- amp_obj %>%
+  #   amp_ordinate(
+  #     sample_color_by = "basecalling",
+  #     sample_shape_by = "barcode",
+  #     transform = "pa",
+  #     type = "PCOA",
+  #     distmeasure = "jaccard",
+  #     filter_species = 0.1,
+  #     sample_label_size = 0
+  #   ) +
+  #   geom_point(size = 3.3, stroke = 0.8) +
+  #   scale_color_manual(values = seq_method_colors) +
+  #   guides(color = guide_legend(title = "Sequencing method", nrow = 1),
+  #          shape = "none") +
+  #   theme_marie_clean() +
+  #   theme(legend.position = "bottom", 
+  #         axis.text.x = element_text(angle = 0, hjust = 0.5))
+
+  
+  # === 8. Combine ===
+  # right_side <- alpha_patchwork / beta_div + plot_layout(heights = c(1.3, 1))
+  # final_patchwork <- hm | right_side
+  # final_patchwork <- final_patchwork + plot_layout(widths = c(0.4, 1))
+
+  
+  return(list(
+    #amp_obj = amp_obj,
+    #alpha_plots = alpha_patchwork,
+    heatmap = hm,
+    beta = beta_div,
+    adonis = adonis_results
+    #beta_pa = beta_div_pa
+  ))
+}
+
+
+
+```
+
+
+### V1V8
+
+
+```{r}
+samples <- unique(global_ASVs_all_load$sample_content)[c(2, 3,5,1)]
+
+
+
+amp_V1V8_merge <- merge_ampvis_samples(
+  sample_contents = samples,
+  base_dir = paste0(WD, "/results"),
+  tax = tax_globalzutu,
+  primerset_name = "V1V8",
+  subsample_group = "all_reads",
+  global_ASVs_all_load = global_ASVs_all_load,
+  new_barcode = new_barcode
+) %>% 
+  amp_subset_samples(minreads = 5) %>% 
+  amp_rarefy(rarefy = 88500)
+
+
+
+amp_V1V8_merge$metadata <- amp_V1V8_merge$metadata %>% 
+   mutate(
+      type = sub(".*_", "", SampleID ),    # extract part after last "_"
+      abun_tab = case_when(type == "all" ~ "-otutab", 
+                       type == "exact" ~ "-search_exact"
+                       ),
+      basecalling  = factor(
+      basecalling,
+      levels = c("pacbio", "super"),
+      labels = c("PacBio", "ONT")),
+  sample_content = factor(sample_content, levels =c("Zmock", "Zfecal", "AD", "WWTP", "Soil")), 
+    )
+```
+
+
+#### Figure 5A: Alphadiv
+
+```{r}
+amp_alpha_div <- amp_V1V8_merge %>% 
+  amp_alpha_diversity()  %>%  select(-Simpson) %>% 
+  pivot_longer(cols = c(uniqueOTUs, Shannon, invSimpson)) %>%  
+  mutate(name  = factor(name, levels = c("uniqueOTUs", "Shannon", "invSimpson"), 
+                              labels = c("Number of ASVs", "Shannon", "Inverse Simpson"))) %>% 
+  group_split(name)
+
+
+plots_list <- amp_alpha_div 
+# %>%
+#   group_split(name)
+
+# --------------------------
+# 3. Apply function to each metric
+# --------------------------
+
+plot_list <- lapply(plots_list, make_alpha_plot)
+# --------------------------
+# 4. Arrange final layout (3 rows × 4 columns)
+# --------------------------
+
+final_plot_V1V8_A <- wrap_plots(
+  plot_list, 
+  nrow = 3,
+  ncol = 1, axes = "collect",
+  guides = "collect"
+)
+
+#final_plot[[1]] <- final_plot[[1]] + theme(strip.text.y = element_blank(), axis.title.y = element_blank())
+#final_plot[[2]] <- final_plot[[2]] + theme(strip.text.y = element_blank(), axis.title.y = element_blank(),)
+
+final_plot_V1V8_A[[3]] <- final_plot_V1V8_A[[3]] + theme(strip.text.x = element_blank()) #, axis.title.y = element_blank())
+final_plot_V1V8_A[[2]] <- final_plot_V1V8_A[[2]] + theme(strip.text.x = element_blank()) #, axis.title.y = element_blank(),)
+
+
+final_plot_V1V8_A
+
+
+```
+
+#### Fig 5B: Heatmap  
+
+```{r}
+amp_zfecal <- read_and_format_to_amp_object_complex(
+  base_dir2 = paste0(WD, "/results/"),
+  primerset_name = "V1V8",
+  subsample_group = "all_reads",
+  sample = "Zfecal",
+  tax = tax_globalzutu,
+  global_ASVs_all_load = global_ASVs_all_load, 
+  new_barcode = new_barcode, type = "_all") %>% 
+   amp_subset_samples(rarefy =  253038)
+
+amp_AD <- read_and_format_to_amp_object_complex(
+  base_dir2 = paste0(WD, "/results/"),
+  primerset_name = "V1V8",
+  subsample_group = "all_reads",
+  sample = "AD",
+  tax = tax_globalzutu,
+  global_ASVs_all_load = global_ASVs_all_load, 
+  new_barcode = new_barcode, type = "_all") %>% 
+   amp_subset_samples(rarefy =  324231)
+
+amp_WWTP <- read_and_format_to_amp_object_complex(
+  base_dir2 = paste0(WD, "/results/"),
+  primerset_name = "V1V8",
+  subsample_group = "all_reads",
+  sample = "WWTP",
+  tax = tax_globalzutu,
+  global_ASVs_all_load = global_ASVs_all_load, 
+  new_barcode = new_barcode, type = "_all") %>% 
+   amp_subset_samples(rarefy =  267949, minreads = 10)
+
+amp_soil <- read_and_format_to_amp_object_complex(
+  base_dir2 = paste0(WD, "/results/"),
+  primerset_name = "V1V8",
+  subsample_group = "all_reads",
+  sample = "Soil",
+  tax = tax_globalzutu,
+  global_ASVs_all_load = global_ASVs_all_load, 
+  new_barcode = new_barcode, type = "_all") %>% 
+   amp_subset_samples(rarefy =  88500, minreads = 10)
+
+
+zfecal <- fig_4B_ordinations(
+  amp_obj = amp_zfecal,
+  new_barcode,
+  type = "_all",
+  rarefy_depth = NULL,
+  seq_method_colors = c("#CC007A", "#0077B6"),
+  test_vec = c("barcode", "basecalling")
+)[[1]] 
+# + geom_label(data = tibble(x = -0.04, y = 0.00, basecalling= "AD\nBarcode:R^2^=0.32, p<0.684\nMethod: R^2^=0.56, p<0.032", barcode = "barcode"),
+#                     aes(x = x, y = y, label = basecalling), inherit.aes = FALSE, hjust = 0, vjust = 0, fill = "white", color = "black", 
+#                     alpha = 0.2, linewidth = 0
+#                     )
+  
+AD <- fig_4B_ordinations(
+  amp_obj = amp_AD,
+  new_barcode,
+  type = "_all",
+  rarefy_depth = NULL,
+  seq_method_colors = c("#CC007A", "#0077B6"),
+  test_vec = c("barcode", "basecalling")
+)[[1]] 
+  
+WWTP <- fig_4B_ordinations(
+  amp_obj = amp_WWTP,
+  new_barcode,
+  type = "_all",
+  rarefy_depth = NULL,
+  seq_method_colors = c("#CC007A", "#0077B6"),
+  test_vec = c("barcode", "basecalling")
+)[[1]] 
+
+
+soil <- fig_4B_ordinations(
+  amp_obj = amp_soil,
+  new_barcode,
+  type = "_all",
+  rarefy_depth = NULL,
+  seq_method_colors = c("#CC007A", "#0077B6", "grey"),
+  test_vec = c("barcode", "basecalling")
+)[[1]] 
+
+fig_4B_v2 <- zfecal +
+  AD + theme(axis.text.y = element_blank()) + 
+  WWTP + theme(axis.text.y = element_blank()) + 
+  soil + theme(axis.text.y = element_blank()) + 
+  plot_layout(ncol = 4, guides = "collect") & 
+  theme(legend.position = "none", strip.text.y = element_text(hjust = 0.5, face = "bold", size = 15))
+
+#fig_4B_v2
+
+
+```
+
+
+#### Figure 5: Alphadiv + Heatmp
+
+```{r}
+
+final_plot_V1V8_A | fig_4B_v2 + 
+  plot_annotation(tag_levels = "A") + 
+  plot_layout(#widths = c(1,0.7)
+              )
+
+plot_name="Fig_5"
+plot_folder=folder_dir_main
+#ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".png"), width = 12, height = 7)
+ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".svg"), width = 12, height = 7, limitsize = F)
+#ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".pdf"), width = 14, height = 7, limitsize = F,  useDingbats=FALSE)
+
+
+```
+
+
+
+#### S11B: Ordination (V1V8)
+
+```{r}
+zfecal <- fig_4B_ordinations(
+  amp_obj = amp_zfecal,
+  new_barcode,
+  type = "_all",
+  rarefy_depth = NULL,
+  seq_method_colors = c("#CC007A", "#0077B6"),
+  test_vec = c("barcode", "basecalling")
+)[[2]] 
+# + geom_label(data = tibble(x = -0.04, y = 0.00, basecalling= "AD\nBarcode:R^2^=0.32, p<0.684\nMethod: R^2^=0.56, p<0.032", barcode = "barcode"),
+#                     aes(x = x, y = y, label = basecalling), inherit.aes = FALSE, hjust = 0, vjust = 0, fill = "white", color = "black", 
+#                     alpha = 0.2, linewidth = 0
+#                     )
+  
+AD <- fig_4B_ordinations(
+  amp_obj = amp_AD,
+  new_barcode,
+  type = "_all",
+  rarefy_depth = NULL,
+  seq_method_colors = c("#CC007A", "#0077B6"),
+  test_vec = c("barcode", "basecalling")
+)[[2]] 
+# + geom_label(data = tibble(x = -0.02, y = 0.01, basecalling= "AD\nBarcode: R^2^=0.69, p<0.037\nMethod: R^2^=0.28, p<0.104", barcode = "barcode"),
+#                     aes(x = x, y = y, label = basecalling), inherit.aes = FALSE, hjust = 0, vjust = 0, fill = "white", color = "black", 
+#                     alpha = 0.2, linewidth = 0
+#                     )
+  
+WWTP <- fig_4B_ordinations(
+  amp_obj = amp_WWTP,
+  new_barcode,
+  type = "_all",
+  rarefy_depth = NULL,
+  seq_method_colors = c("#CC007A", "#0077B6"),
+  test_vec = c("barcode", "basecalling")
+)[[2]] 
+# + geom_label(data = tibble(x = -0.02, y = 0.01, basecalling= "WWTP\nBarcode: R^2^=0.45, p<0.46\nMethod: *R^2^=0.38, p<0.1", barcode = "barcode"),
+#                     aes(x = x, y = y, label = basecalling), inherit.aes = FALSE, hjust = 0, vjust = 0, fill = "white", color = "black", 
+#                     alpha = 0.2, linewidth = 0
+#                     )
+  
+soil <- fig_4B_ordinations(
+  amp_obj = amp_soil,
+  new_barcode,
+  type = "_all",
+  rarefy_depth = NULL,
+  seq_method_colors = c("#CC007A", "#0077B6", "grey"),
+  test_vec = c("barcode", "basecalling")
+)[[2]] 
+# + geom_label(data = tibble(x = -0.02, y = 0.01, basecalling= "Soil\nBarcode: R^2^=0.34, p<0.762\nMethod: R^2^=0.43, p<0.031", barcode = "barcode"),
+#                     aes(x = x, y = y, label = basecalling), inherit.aes = FALSE, hjust = 0, vjust = 0, fill = "white", color = "black", 
+#                     alpha = 0.2, linewidth = 0
+#                     )
+
+ordination_V1V8 <- zfecal + AD + WWTP + soil + 
+  plot_layout(ncol = 1, widths = c(1), heights = c(1,1,1,1), guides = "collect") & theme(legend.position = "bottom")
+
+
+
+```
+
+
+
+
+### V4
+
+```{r}
+samples <- unique(global_ASVs_all_load$sample_content)[c(2, 3,5,1)]
+
+amp_V4_merge <- merge_ampvis_samples(
+  sample_contents = samples,
+  base_dir = paste0(WD, "/results/"),
+  tax = tax_globalzutu,
+  primerset_name = "V4",
+  subsample_group = "all_reads",
+  global_ASVs_all_load = global_ASVs_all_load,
+  new_barcode = new_barcode
+) %>% 
+  amp_subset_samples(minreads = 5) %>% 
+  amp_rarefy(rarefy = 5126)
+
+amp_V4_merge$metadata <- amp_V4_merge$metadata %>% 
+   mutate(
+      type = sub(".*_", "", SampleID ),    # extract part after last "_"
+      abun_tab = case_when(type == "all" ~ "-otutab", 
+                       type == "exact" ~ "-search_exact"
+                       ),
+      basecalling  = factor(
+      basecalling,
+      levels = c("pacbio", "super"),
+      labels = c("PacBio", "ONT")),
+        sample_content = factor(sample_content, levels =c("Zmock", "Zfecal", "AD", "WWTP", "Soil")), 
+    
+    )
+
+
+```
+
+
+```{r}
+amp_alpha_div <- amp_V4_merge %>% 
+  amp_alpha_diversity()  %>%  select(-Simpson) %>% 
+  pivot_longer(cols = c(uniqueOTUs, Shannon, invSimpson)) %>%  
+  mutate(name  = factor(name, levels = c("uniqueOTUs", "Shannon", "invSimpson"), 
+                              labels = c("Number of ASVs", "Shannon", "Inverse Simpson"))) %>% 
+  group_split(name)
+
+
+plots_list <- amp_alpha_div 
+# %>%
+#   group_split(name)
+
+# --------------------------
+# 3. Apply function to each metric
+# --------------------------
+
+plot_list <- lapply(plots_list, make_alpha_plot)
+# --------------------------
+# 4. Arrange final layout (3 rows × 4 columns)
+# --------------------------
+
+final_plot_V1V8_A <- wrap_plots(
+  plot_list, 
+  nrow = 3,
+  ncol = 1, axes = "collect",
+  guides = "collect"
+)
+
+#final_plot[[1]] <- final_plot[[1]] + theme(strip.text.y = element_blank(), axis.title.y = element_blank())
+#final_plot[[2]] <- final_plot[[2]] + theme(strip.text.y = element_blank(), axis.title.y = element_blank(),)
+
+final_plot_V1V8_A[[3]] <- final_plot_V1V8_A[[3]] + theme(strip.text.x = element_blank()) #, axis.title.y = element_blank())
+final_plot_V1V8_A[[2]] <- final_plot_V1V8_A[[2]] + theme(strip.text.x = element_blank()) #, axis.title.y = element_blank(),)
+
+
+#final_plot_V1V8_A
+
+
+# plot_name="Fig_S2_Alpha_diversity_final_updated"
+# plot_folder="complex"
+# ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".png"), width = 7, height = 8)
+# ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".pdf"), width = 14, height = 7, limitsize = F,  useDingbats=FALSE)
+
+```
+
+
+#### Fig S8B: Heatmap  
+
+```{r}
+amp_zfecal <- read_and_format_to_amp_object_complex(
+  base_dir2 = paste0(WD, "/results/"),
+  primerset_name = "V4",
+  subsample_group = "all_reads",
+  sample = "Zfecal",
+  tax = tax_globalzutu,
+  global_ASVs_all_load = global_ASVs_all_load, 
+  new_barcode = new_barcode, type = "_all") %>% 
+   amp_subset_samples(rarefy =6896)
+
+amp_AD <- read_and_format_to_amp_object_complex(
+  base_dir2 = paste0(WD, "/results/"),
+  primerset_name = "V4",
+  subsample_group = "all_reads",
+  sample = "AD",
+  tax = tax_globalzutu,
+  global_ASVs_all_load = global_ASVs_all_load, 
+  new_barcode = new_barcode, type = "_all") %>% 
+   amp_subset_samples(rarefy =  6205)
+
+amp_WWTP <- read_and_format_to_amp_object_complex(
+  base_dir2 = paste0(WD, "/results/"),
+  primerset_name = "V4",
+  subsample_group = "all_reads",
+  sample = "WWTP",
+  tax = tax_globalzutu,
+  global_ASVs_all_load = global_ASVs_all_load, 
+  new_barcode = new_barcode, type = "_all") %>% 
+   amp_subset_samples(rarefy =  5760, minreads = 10)
+
+amp_soil <- read_and_format_to_amp_object_complex(
+  base_dir2 = paste0(WD, "/results/"),
+  primerset_name = "V4",
+  subsample_group = "all_reads",
+  sample = "Soil",
+  tax = tax_globalzutu,
+  global_ASVs_all_load = global_ASVs_all_load, 
+  new_barcode = new_barcode, type = "_all") %>% 
+   amp_subset_samples(rarefy =  5126, minreads = 10)
+
+
+zfecal <- fig_4B_ordinations(
+  amp_obj = amp_zfecal,
+  new_barcode,
+  type = "_all",
+  rarefy_depth = NULL,
+  seq_method_colors = c("#CC007A", "#0077B6"),
+  test_vec = c("barcode", "basecalling")
+)[[1]] 
+# + geom_label(data = tibble(x = -0.04, y = 0.00, basecalling= "AD\nBarcode:R^2^=0.32, p<0.684\nMethod: R^2^=0.56, p<0.032", barcode = "barcode"),
+#                     aes(x = x, y = y, label = basecalling), inherit.aes = FALSE, hjust = 0, vjust = 0, fill = "white", color = "black", 
+#                     alpha = 0.2, linewidth = 0
+#                     )
+  
+AD <- fig_4B_ordinations(
+  amp_obj = amp_AD,
+  new_barcode,
+  type = "_all",
+  rarefy_depth = NULL,
+  seq_method_colors = c("#CC007A", "#0077B6"),
+  test_vec = c("barcode", "basecalling")
+)[[1]] 
+  
+WWTP <- fig_4B_ordinations(
+  amp_obj = amp_WWTP,
+  new_barcode,
+  type = "_all",
+  rarefy_depth = NULL,
+  seq_method_colors = c("#CC007A", "#0077B6"),
+  test_vec = c("barcode", "basecalling")
+)[[1]] 
+
+
+soil <- fig_4B_ordinations(
+  amp_obj = amp_soil,
+  new_barcode,
+  type = "_all",
+  rarefy_depth = NULL,
+  seq_method_colors = c("#CC007A", "#0077B6", "grey"),
+  test_vec = c("barcode", "basecalling")
+)[[1]] 
+
+fig_4B_v2 <- zfecal +
+  AD + theme(axis.text.y = element_blank()) + 
+  WWTP + theme(axis.text.y = element_blank()) + 
+  soil + theme(axis.text.y = element_blank()) + 
+  plot_layout(ncol = 4, guides = "collect") & 
+  theme(legend.position = "none", strip.text.y = element_text(hjust = 0.5, face = "bold", size = 15))
+
+#fig_4B_v2
+
+
+```
+
+
+#### Figure 4: Alphadiv + Heatmp
+
+```{r}
+
+final_plot_V1V8_A | fig_4B_v2 + 
+  plot_annotation(tag_levels = "A") + 
+  plot_layout(#widths = c(1,0.7)
+              )
+
+plot_name="Fig_S8_Alpha_diversity_V4"
+plot_folder=folder_dir_supp
+#ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".png"), width = 12, height = 7)
+ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".svg"), width = 12, height = 7, limitsize = F)
+#ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".pdf"), width = 14, height = 7, limitsize = F,  useDingbats=FALSE)
+
+
+```
+
+
+#### S11A: Ordination (V4)
+
+```{r}
+zfecal <- fig_4B_ordinations(
+  amp_obj = amp_zfecal,
+  new_barcode,
+  type = "_all",
+  rarefy_depth = NULL,
+  seq_method_colors = c("#CC007A", "#0077B6"),
+  test_vec = c("barcode", "basecalling")
+)[[2]] 
+# + geom_label(data = tibble(x = -0.04, y = 0.00, basecalling= "AD\nBarcode:R^2^=0.32, p<0.684\nMethod: R^2^=0.56, p<0.032", barcode = "barcode"),
+#                     aes(x = x, y = y, label = basecalling), inherit.aes = FALSE, hjust = 0, vjust = 0, fill = "white", color = "black", 
+#                     alpha = 0.2, linewidth = 0
+#                     )
+  
+AD <- fig_4B_ordinations(
+  amp_obj = amp_AD,
+  new_barcode,
+  type = "_all",
+  rarefy_depth = NULL,
+  seq_method_colors = c("#CC007A", "#0077B6"),
+  test_vec = c("barcode", "basecalling")
+)[[2]] 
+# + geom_label(data = tibble(x = -0.02, y = 0.01, basecalling= "AD\nBarcode: R^2^=0.69, p<0.037\nMethod: R^2^=0.28, p<0.104", barcode = "barcode"),
+#                     aes(x = x, y = y, label = basecalling), inherit.aes = FALSE, hjust = 0, vjust = 0, fill = "white", color = "black", 
+#                     alpha = 0.2, linewidth = 0
+#                     )
+  
+WWTP <- fig_4B_ordinations(
+  amp_obj = amp_WWTP,
+  new_barcode,
+  type = "_all",
+  rarefy_depth = NULL,
+  seq_method_colors = c("#CC007A", "#0077B6"),
+  test_vec = c("barcode", "basecalling")
+)[[2]] 
+# + geom_label(data = tibble(x = -0.02, y = 0.01, basecalling= "WWTP\nBarcode: R^2^=0.45, p<0.46\nMethod: *R^2^=0.38, p<0.1", barcode = "barcode"),
+#                     aes(x = x, y = y, label = basecalling), inherit.aes = FALSE, hjust = 0, vjust = 0, fill = "white", color = "black", 
+#                     alpha = 0.2, linewidth = 0
+#                     )
+  
+soil <- fig_4B_ordinations(
+  amp_obj = amp_soil,
+  new_barcode,
+  type = "_all",
+  rarefy_depth = NULL,
+  seq_method_colors = c("#CC007A", "#0077B6", "grey"),
+  test_vec = c("barcode", "basecalling")
+)[[2]] 
+# + geom_label(data = tibble(x = -0.02, y = 0.01, basecalling= "Soil\nBarcode: R^2^=0.34, p<0.762\nMethod: R^2^=0.43, p<0.031", barcode = "barcode"),
+#                     aes(x = x, y = y, label = basecalling), inherit.aes = FALSE, hjust = 0, vjust = 0, fill = "white", color = "black", 
+#                     alpha = 0.2, linewidth = 0
+#                     )
+
+ordination_V4 <- zfecal + AD + WWTP + soil + 
+  plot_layout(ncol = 1, widths = c(1), heights = c(1,1,1,1), guides = "collect") & theme(legend.position = "bottom")
+
+
+
+```
+
+
+
+
+
+### V1V3
+
+```{r}
+samples <- unique(global_ASVs_all_load$sample_content)[c(2, 3,5,1)]
+
+amp_V1V3_merge <- merge_ampvis_samples(
+  sample_contents = samples,
+  base_dir = paste0(WD, "/results/"),
+  tax = tax_globalzutu,
+  primerset_name = "V1V3",
+  subsample_group = "all_reads",
+  global_ASVs_all_load = global_ASVs_all_load,
+  new_barcode = new_barcode
+) %>% 
+  amp_subset_samples(minreads = 5) %>% 
+  amp_rarefy(rarefy = 29083)
+
+amp_V1V3_merge$metadata <- amp_V1V3_merge$metadata %>% 
+   mutate(
+      type = sub(".*_", "", SampleID ),    # extract part after last "_"
+      abun_tab = case_when(type == "all" ~ "-otutab", 
+                       type == "exact" ~ "-search_exact"
+                       ),
+      basecalling  = factor(
+      basecalling,
+      levels = c("pacbio", "super"),
+      labels = c("PacBio", "ONT")),
+        sample_content = factor(sample_content, levels =c("Zmock", "Zfecal", "AD", "WWTP", "Soil")), 
+    )
+
+```
+
+
+
+
+```{r}
+amp_alpha_div <- amp_V1V3_merge %>% 
+  amp_alpha_diversity()  %>%  select(-Simpson) %>% 
+  pivot_longer(cols = c(uniqueOTUs, Shannon, invSimpson)) %>%  
+  mutate(name  = factor(name, levels = c("uniqueOTUs", "Shannon", "invSimpson"), 
+                              labels = c("Number of ASVs", "Shannon", "Inverse Simpson"))) %>% 
+  group_split(name)
+
+
+plots_list <- amp_alpha_div 
+# %>%
+#   group_split(name)
+
+# --------------------------
+# 3. Apply function to each metric
+# --------------------------
+
+plot_list <- lapply(plots_list, make_alpha_plot)
+# --------------------------
+# 4. Arrange final layout (3 rows × 4 columns)
+# --------------------------
+
+final_plot_V1V8_A <- wrap_plots(
+  plot_list, 
+  nrow = 3,
+  ncol = 1, axes = "collect",
+  guides = "collect"
+)
+
+#final_plot[[1]] <- final_plot[[1]] + theme(strip.text.y = element_blank(), axis.title.y = element_blank())
+#final_plot[[2]] <- final_plot[[2]] + theme(strip.text.y = element_blank(), axis.title.y = element_blank(),)
+
+final_plot_V1V8_A[[3]] <- final_plot_V1V8_A[[3]] + theme(strip.text.x = element_blank()) #, axis.title.y = element_blank())
+final_plot_V1V8_A[[2]] <- final_plot_V1V8_A[[2]] + theme(strip.text.x = element_blank()) #, axis.title.y = element_blank(),)
+
+
+#final_plot_V1V8_A
+
+
+```
+
+
+#### Fig S9B: Heatmap  
+
+```{r}
+amp_zfecal <- read_and_format_to_amp_object_complex(
+  base_dir2 = paste0(WD, "/results/"),
+  primerset_name = "V1V3",
+  subsample_group = "all_reads",
+  sample = "Zfecal",
+  tax = tax_globalzutu,
+  global_ASVs_all_load = global_ASVs_all_load, 
+  new_barcode = new_barcode, type = "_all") %>% 
+   amp_subset_samples(rarefy =29083)
+
+amp_AD <- read_and_format_to_amp_object_complex(
+  base_dir2 = paste0(WD, "/results/"),
+  primerset_name = "V1V3",
+  subsample_group = "all_reads",
+  sample = "AD",
+  tax = tax_globalzutu,
+  global_ASVs_all_load = global_ASVs_all_load, 
+  new_barcode = new_barcode, type = "_all") %>% 
+   amp_subset_samples(rarefy =  30838)
+
+amp_WWTP <- read_and_format_to_amp_object_complex(
+  base_dir2 = paste0(WD, "/results/"),
+  primerset_name = "V1V3",
+  subsample_group = "all_reads",
+  sample = "WWTP",
+  tax = tax_globalzutu,
+  global_ASVs_all_load = global_ASVs_all_load, 
+  new_barcode = new_barcode, type = "_all") %>% 
+   amp_subset_samples(rarefy =  29371, minreads = 10)
+
+amp_soil <- read_and_format_to_amp_object_complex(
+  base_dir2 = paste0(WD, "/results/"),
+  primerset_name = "V1V3",
+  subsample_group = "all_reads",
+  sample = "Soil",
+  tax = tax_globalzutu,
+  global_ASVs_all_load = global_ASVs_all_load, 
+  new_barcode = new_barcode, type = "_all") %>% 
+   amp_subset_samples(rarefy =  31342, minreads = 10)
+
+
+zfecal <- fig_4B_ordinations(
+  amp_obj = amp_zfecal,
+  new_barcode,
+  type = "_all",
+  rarefy_depth = NULL,
+  seq_method_colors = c("#CC007A", "#0077B6"),
+  test_vec = c("barcode", "basecalling")
+)[[1]] 
+# + geom_label(data = tibble(x = -0.04, y = 0.00, basecalling= "AD\nBarcode:R^2^=0.32, p<0.684\nMethod: R^2^=0.56, p<0.032", barcode = "barcode"),
+#                     aes(x = x, y = y, label = basecalling), inherit.aes = FALSE, hjust = 0, vjust = 0, fill = "white", color = "black", 
+#                     alpha = 0.2, linewidth = 0
+#                     )
+  
+AD <- fig_4B_ordinations(
+  amp_obj = amp_AD,
+  new_barcode,
+  type = "_all",
+  rarefy_depth = NULL,
+  seq_method_colors = c("#CC007A", "#0077B6"),
+  test_vec = c("barcode", "basecalling")
+)[[1]] 
+  
+WWTP <- fig_4B_ordinations(
+  amp_obj = amp_WWTP,
+  new_barcode,
+  type = "_all",
+  rarefy_depth = NULL,
+  seq_method_colors = c("#CC007A", "#0077B6"),
+  test_vec = c("barcode", "basecalling")
+)[[1]] 
+
+
+soil <- fig_4B_ordinations(
+  amp_obj = amp_soil,
+  new_barcode,
+  type = "_all",
+  rarefy_depth = NULL,
+  seq_method_colors = c("#CC007A", "#0077B6", "grey"),
+  test_vec = c("barcode", "basecalling")
+)[[1]] 
+
+fig_4B_v2 <- zfecal +
+  AD + theme(axis.text.y = element_blank()) + 
+  WWTP + theme(axis.text.y = element_blank()) + 
+  soil + theme(axis.text.y = element_blank()) + 
+  plot_layout(ncol = 4, guides = "collect") & 
+  theme(legend.position = "none", strip.text.y = element_text(hjust = 0.5, face = "bold", size = 15))
+
+fig_4B_v2
+
+
+```
+
+
+#### Figure 4: Alphadiv + Heatmp
+
+```{r}
+
+final_plot_V1V8_A | fig_4B_v2 + 
+  plot_annotation(tag_levels = "A") + 
+  plot_layout(#widths = c(1,0.7)
+              )
+
+plot_name="Fig_S9_Alpha_diversity_V1V3"
+plot_folder=folder_dir_supp
+#ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".png"), width = 12, height = 7)
+
+ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".svg"), width = 12, height = 7, limitsize = F)
+
+#ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".pdf"), width = 14, height = 7, limitsize = F,  useDingbats=FALSE)
+
+
+```
+
+
+
+#### S11A: Ordination (V1V3)
+
+```{r}
+zfecal <- fig_4B_ordinations(
+  amp_obj = amp_zfecal,
+  new_barcode,
+  type = "_all",
+  rarefy_depth = NULL,
+  seq_method_colors = c("#CC007A", "#0077B6"),
+  test_vec = c("barcode", "basecalling")
+)[[2]] 
+# + geom_label(data = tibble(x = -0.04, y = 0.00, basecalling= "AD\nBarcode:R^2^=0.32, p<0.684\nMethod: R^2^=0.56, p<0.032", barcode = "barcode"),
+#                     aes(x = x, y = y, label = basecalling), inherit.aes = FALSE, hjust = 0, vjust = 0, fill = "white", color = "black", 
+#                     alpha = 0.2, linewidth = 0
+#                     )
+  
+AD <- fig_4B_ordinations(
+  amp_obj = amp_AD,
+  new_barcode,
+  type = "_all",
+  rarefy_depth = NULL,
+  seq_method_colors = c("#CC007A", "#0077B6"),
+  test_vec = c("barcode", "basecalling")
+)[[2]] 
+# + geom_label(data = tibble(x = -0.02, y = 0.01, basecalling= "AD\nBarcode: R^2^=0.69, p<0.037\nMethod: R^2^=0.28, p<0.104", barcode = "barcode"),
+#                     aes(x = x, y = y, label = basecalling), inherit.aes = FALSE, hjust = 0, vjust = 0, fill = "white", color = "black", 
+#                     alpha = 0.2, linewidth = 0
+#                     )
+  
+WWTP <- fig_4B_ordinations(
+  amp_obj = amp_WWTP,
+  new_barcode,
+  type = "_all",
+  rarefy_depth = NULL,
+  seq_method_colors = c("#CC007A", "#0077B6"),
+  test_vec = c("barcode", "basecalling")
+)[[2]] 
+# + geom_label(data = tibble(x = -0.02, y = 0.01, basecalling= "WWTP\nBarcode: R^2^=0.45, p<0.46\nMethod: *R^2^=0.38, p<0.1", barcode = "barcode"),
+#                     aes(x = x, y = y, label = basecalling), inherit.aes = FALSE, hjust = 0, vjust = 0, fill = "white", color = "black", 
+#                     alpha = 0.2, linewidth = 0
+#                     )
+  
+soil <- fig_4B_ordinations(
+  amp_obj = amp_soil,
+  new_barcode,
+  type = "_all",
+  rarefy_depth = NULL,
+  seq_method_colors = c("#CC007A", "#0077B6", "grey"),
+  test_vec = c("barcode", "basecalling")
+)[[2]] 
+# + geom_label(data = tibble(x = -0.02, y = 0.01, basecalling= "Soil\nBarcode: R^2^=0.34, p<0.762\nMethod: R^2^=0.43, p<0.031", barcode = "barcode"),
+#                     aes(x = x, y = y, label = basecalling), inherit.aes = FALSE, hjust = 0, vjust = 0, fill = "white", color = "black", 
+#                     alpha = 0.2, linewidth = 0
+#                     )
+
+ordination_V1V3 <- zfecal + AD + WWTP + soil + 
+  plot_layout(ncol = 1, widths = c(1), heights = c(1,1,1,1), guides = "collect") & theme(legend.position = "bottom")
+
+
+
+```
+
+
+
+ 
+### OPR
+
+```{r}
+samples <- unique(global_ASVs_all_load$sample_content)[c(2, 3,5,1)]
+
+amp_OPR_merge <- merge_ampvis_samples(
+  sample_contents = samples,
+  base_dir = paste0(WD, "/results/"),
+  tax = tax_globalzutu,
+  primerset_name = "OPR",
+  subsample_group = "all_reads",
+  global_ASVs_all_load = global_ASVs_all_load,
+  new_barcode = new_barcode
+) %>% 
+  amp_subset_samples(minreads = 5) %>% 
+  amp_rarefy(rarefy = 27135)
+
+amp_OPR_merge$metadata <- amp_OPR_merge$metadata %>% 
+   mutate(
+      type = sub(".*_", "", SampleID ),    # extract part after last "_"
+      abun_tab = case_when(type == "all" ~ "-otutab", 
+                       type == "exact" ~ "-search_exact"
+                       ),
+      basecalling  = factor(
+      basecalling,
+      levels = c("pacbio", "super"),
+      labels = c("PacBio", "ONT")), 
+        sample_content = factor(sample_content, levels =c("Zmock", "Zfecal", "AD", "WWTP", "Soil")), 
+    )
+
+
+
+```
+
+
+
+```{r}
+
+amp_alpha_div <- amp_OPR_merge %>% 
+  amp_alpha_diversity()  %>%  select(-Simpson) %>% 
+  pivot_longer(cols = c(uniqueOTUs, Shannon, invSimpson)) %>%  
+  mutate(name  = factor(name, levels = c("uniqueOTUs", "Shannon", "invSimpson"), 
+                              labels = c("Number of ASVs", "Shannon", "Inverse Simpson"))) %>% 
+  group_split(name)
+
+
+plots_list <- amp_alpha_div 
+# %>%
+#   group_split(name)
+
+# --------------------------
+# 3. Apply function to each metric
+# --------------------------
+
+plot_list <- lapply(plots_list, make_alpha_plot)
+# --------------------------
+# 4. Arrange final layout (3 rows × 4 columns)
+# --------------------------
+
+final_plot_V1V8_A <- wrap_plots(
+  plot_list, 
+  nrow = 3,
+  ncol = 1, axes = "collect",
+  guides = "collect"
+)
+
+#final_plot[[1]] <- final_plot[[1]] + theme(strip.text.y = element_blank(), axis.title.y = element_blank())
+#final_plot[[2]] <- final_plot[[2]] + theme(strip.text.y = element_blank(), axis.title.y = element_blank(),)
+
+final_plot_V1V8_A[[3]] <- final_plot_V1V8_A[[3]] + theme(strip.text.x = element_blank()) #, axis.title.y = element_blank())
+final_plot_V1V8_A[[2]] <- final_plot_V1V8_A[[2]] + theme(strip.text.x = element_blank()) #, axis.title.y = element_blank(),)
+
+
+final_plot_V1V8_A
+
+
+```
+
+
+#### Fig S10B: Heatmap  
+
+```{r}
+amp_zfecal <- read_and_format_to_amp_object_complex(
+  base_dir2 = paste0(WD, "/results/"),
+  primerset_name = "OPR",
+  subsample_group = "all_reads",
+  sample = "Zfecal",
+  tax = tax_globalzutu,
+  global_ASVs_all_load = global_ASVs_all_load, 
+  new_barcode = new_barcode, type = "_all") %>% 
+   amp_subset_samples(rarefy =68587)
+
+amp_AD <- read_and_format_to_amp_object_complex(
+  base_dir2 = paste0(WD, "/results/"),
+  primerset_name = "OPR",
+  subsample_group = "all_reads",
+  sample = "AD",
+  tax = tax_globalzutu,
+  global_ASVs_all_load = global_ASVs_all_load, 
+  new_barcode = new_barcode, type = "_all") %>% 
+   amp_subset_samples(rarefy =  53436)
+
+amp_WWTP <- read_and_format_to_amp_object_complex(
+  base_dir2 = paste0(WD, "/results/"),
+  primerset_name = "OPR",
+  subsample_group = "all_reads",
+  sample = "WWTP",
+  tax = tax_globalzutu,
+  global_ASVs_all_load = global_ASVs_all_load, 
+  new_barcode = new_barcode, type = "_all") %>% 
+   amp_subset_samples(rarefy =  49678, minreads = 10)
+
+amp_soil <- read_and_format_to_amp_object_complex(
+  base_dir2 = paste0(WD, "/results/"),
+  primerset_name = "OPR",
+  subsample_group = "all_reads",
+  sample = "Soil",
+  tax = tax_globalzutu,
+  global_ASVs_all_load = global_ASVs_all_load, 
+  new_barcode = new_barcode, type = "_all") %>% 
+   amp_subset_samples(rarefy =  27135, minreads = 10)
+
+
+zfecal <- fig_4B_ordinations(
+  amp_obj = amp_zfecal,
+  new_barcode,
+  type = "_all",
+  rarefy_depth = NULL,
+  seq_method_colors = c("#CC007A", "#0077B6"),
+  test_vec = c("barcode", "basecalling")
+)[[1]] 
+# + geom_label(data = tibble(x = -0.04, y = 0.00, basecalling= "AD\nBarcode:R^2^=0.32, p<0.684\nMethod: R^2^=0.56, p<0.032", barcode = "barcode"),
+#                     aes(x = x, y = y, label = basecalling), inherit.aes = FALSE, hjust = 0, vjust = 0, fill = "white", color = "black", 
+#                     alpha = 0.2, linewidth = 0
+#                     )
+  
+AD <- fig_4B_ordinations(
+  amp_obj = amp_AD,
+  new_barcode,
+  type = "_all",
+  rarefy_depth = NULL,
+  seq_method_colors = c("#CC007A", "#0077B6"),
+  test_vec = c("barcode", "basecalling")
+)[[1]] 
+  
+WWTP <- fig_4B_ordinations(
+  amp_obj = amp_WWTP,
+  new_barcode,
+  type = "_all",
+  rarefy_depth = NULL,
+  seq_method_colors = c("#CC007A", "#0077B6"),
+  test_vec = c("barcode", "basecalling")
+)[[1]] 
+
+
+soil <- fig_4B_ordinations(
+  amp_obj = amp_soil,
+  new_barcode,
+  type = "_all",
+  rarefy_depth = NULL,
+  seq_method_colors = c("#CC007A", "#0077B6", "grey"),
+  test_vec = c("barcode", "basecalling")
+)[[1]] 
+
+fig_4B_v2 <- zfecal +
+  AD + theme(axis.text.y = element_blank()) + 
+  WWTP + theme(axis.text.y = element_blank()) + 
+  soil + theme(axis.text.y = element_blank()) + 
+  plot_layout(ncol = 4, guides = "collect") & 
+  theme(legend.position = "none", strip.text.y = element_text(hjust = 0.5, face = "bold", size = 15))
+
+fig_4B_v2
+
+
+```
+
+
+#### Figure 4: Alphadiv + Heatmp
+
+```{r}
+
+final_plot_V1V8_A | fig_4B_v2 + 
+  plot_annotation(tag_levels = "A") + 
+  plot_layout(#widths = c(1,0.7)
+              )
+
+plot_name="Fig_S10_Alpha_diversity_OPR"
+plot_folder=folder_dir_supp
+#ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".png"), width = 12, height = 7)
+ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".svg"), width = 12, height = 7, limitsize = F)
+
+#ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".pdf"), width = 14, height = 7, limitsize = F,  useDingbats=FALSE)
+
+
+```
+
+
+#### S11A: Ordination (OPR)
+
+```{r}
+zfecal <- fig_4B_ordinations(
+  amp_obj = amp_zfecal,
+  new_barcode,
+  type = "_all",
+  rarefy_depth = NULL,
+  seq_method_colors = c("#CC007A", "#0077B6"),
+  test_vec = c("barcode", "basecalling")
+)[[2]] 
+# + geom_label(data = tibble(x = -0.04, y = 0.00, basecalling= "AD\nBarcode:R^2^=0.32, p<0.684\nMethod: R^2^=0.56, p<0.032", barcode = "barcode"),
+#                     aes(x = x, y = y, label = basecalling), inherit.aes = FALSE, hjust = 0, vjust = 0, fill = "white", color = "black", 
+#                     alpha = 0.2, linewidth = 0
+#                     )
+  
+AD <- fig_4B_ordinations(
+  amp_obj = amp_AD,
+  new_barcode,
+  type = "_all",
+  rarefy_depth = NULL,
+  seq_method_colors = c("#CC007A", "#0077B6"),
+  test_vec = c("barcode", "basecalling")
+)[[2]] 
+# + geom_label(data = tibble(x = -0.02, y = 0.01, basecalling= "AD\nBarcode: R^2^=0.69, p<0.037\nMethod: R^2^=0.28, p<0.104", barcode = "barcode"),
+#                     aes(x = x, y = y, label = basecalling), inherit.aes = FALSE, hjust = 0, vjust = 0, fill = "white", color = "black", 
+#                     alpha = 0.2, linewidth = 0
+#                     )
+  
+WWTP <- fig_4B_ordinations(
+  amp_obj = amp_WWTP,
+  new_barcode,
+  type = "_all",
+  rarefy_depth = NULL,
+  seq_method_colors = c("#CC007A", "#0077B6"),
+  test_vec = c("barcode", "basecalling")
+)[[2]] 
+# + geom_label(data = tibble(x = -0.02, y = 0.01, basecalling= "WWTP\nBarcode: R^2^=0.45, p<0.46\nMethod: *R^2^=0.38, p<0.1", barcode = "barcode"),
+#                     aes(x = x, y = y, label = basecalling), inherit.aes = FALSE, hjust = 0, vjust = 0, fill = "white", color = "black", 
+#                     alpha = 0.2, linewidth = 0
+#                     )
+  
+soil <- fig_4B_ordinations(
+  amp_obj = amp_soil,
+  new_barcode,
+  type = "_all",
+  rarefy_depth = NULL,
+  seq_method_colors = c("#CC007A", "#0077B6", "grey"),
+  test_vec = c("barcode", "basecalling")
+)[[2]] 
+# + geom_label(data = tibble(x = -0.02, y = 0.01, basecalling= "Soil\nBarcode: R^2^=0.34, p<0.762\nMethod: R^2^=0.43, p<0.031", barcode = "barcode"),
+#                     aes(x = x, y = y, label = basecalling), inherit.aes = FALSE, hjust = 0, vjust = 0, fill = "white", color = "black", 
+#                     alpha = 0.2, linewidth = 0
+#                     )
+
+ordination_OPR <- zfecal + AD + WWTP + soil + 
+  plot_layout(ncol = 1, widths = c(1), heights = c(1,1,1,1), guides = "collect") & theme(legend.position = "bottom")
+
+
+
+```
+
+
+
+
+## Figure S11:Betadiv beta diversitet  (per group)
+
+
+```{r}
+
+
+combined <- ordination_V4 | ordination_V1V3 | ordination_V1V8 
+
+combined
+
+```
+
+
+
+# Betadiversity across primersets
+
+
+
+
+## Figure 6B
+
+```{r}
+
+amp_merge_full_1 <- amp_merge_ampvis2(amp_V1V3_merge, amp_V4_merge, by_refseq = FALSE)
+
+amp_merge_full_2 <- amp_merge_ampvis2(amp_merge_full_1, amp_V1V8_merge, by_refseq = FALSE) %>% 
+  amp_subset_samples(rarefy = 5126, normalise = T)
+
+
+amp_merge_full_long <- amp_merge_full_2 %>% 
+  amp_export_long() %>% as_tibble() %>% 
+  group_by(SampleID) %>% 
+  mutate(mapped_reads = sum(count)) %>% ungroup() %>% 
+  group_by(SampleID, OTU) %>% 
+  mutate(rel_abun_ASV = sum(count)) %>% ungroup() %>% 
+  group_by(SampleID, Species) %>% 
+  mutate(rel_abun_species = sum(rel_abun_ASV)) %>% ungroup() %>% 
+  group_by(SampleID, Family) %>% 
+  mutate(rel_abun_family = sum(rel_abun_ASV)) %>% ungroup() %>% 
+  group_by(SampleID, Genus) %>% 
+  mutate(rel_abun_genus = sum(rel_abun_ASV)) %>% ungroup() %>% 
+  nest(samples = c(OTU, mapped_reads, count, Genus, Species, Family,
+                   rel_abun_ASV, rel_abun_species, rel_abun_genus, rel_abun_family))
+
+
+
+p_species_Zfecal <- PCOA_from_long_df(
+        amp_merge_full_long %>% filter(sample_content == "Zfecal"),
+        tax_level = "Family",
+        abun_limit = 0.1
+      ) +
+        geom_point(
+          aes(
+            color = basecalling,
+            shape = primerset
+          ),
+          size = 3, alpha = 1
+        ) +
+       scale_color_manual(values = seq_method_colors) + 
+        theme_marie_clean() +
+          guides(shape = guide_legend(title = "Primer set"), 
+                 color = guide_legend(title = "Sequencing platform")) +
+        ggtitle(paste0("Zfecal")) 
+
+test_vec = c("basecalling", "primerset")
+
+adonis_results <- ADONIS_from_long_df(
+    data =  amp_merge_full_long %>% filter(sample_content == "Zfecal") %>% unnest(samples),
+    tax_level = "Family", 
+    abun_limit = 0.1,
+    test_varibles = test_vec
+)
+  print(adonis_results)
+
+
+p_species_AD <- PCOA_from_long_df(
+        amp_merge_full_long %>% filter(sample_content == "AD"),
+        tax_level = "Family",
+        abun_limit = 0.1
+      ) +
+        geom_point(
+          aes(
+            color = basecalling,
+            shape =  primerset
+          ),
+          size = 3, alpha = 1
+        ) +
+       scale_color_manual(values = seq_method_colors) + 
+        theme_marie_clean() +
+        guides(shape = guide_legend(title = "Primer set"), 
+                 color = guide_legend(title = "Sequencing platform")) +
+        ggtitle(paste0("AD")) 
+
+adonis_results <- ADONIS_from_long_df(
+    data =  amp_merge_full_long %>% filter(sample_content == "AD") %>% unnest(samples),
+    tax_level = "Family", 
+    abun_limit = 0.1,
+    test_varibles = test_vec
+)
+  print(adonis_results)
+
+  
+p_species_WWTP <- PCOA_from_long_df(
+        amp_merge_full_long %>% filter(sample_content == "WWTP"),
+        tax_level = "Family",
+        abun_limit = 0.1
+      ) +
+        geom_point(
+          aes(
+            color =basecalling,
+            shape =  primerset
+          ),
+          size = 3, alpha = 1
+        ) +
+       scale_color_manual(values = seq_method_colors) + 
+        theme_marie_clean() +
+          guides(shape = guide_legend(title = "Primer set"), 
+                 color = guide_legend(title = "Sequencing platform")) +
+        ggtitle(paste0("WWTP")) 
+
+adonis_results <- ADONIS_from_long_df(
+    data =  amp_merge_full_long %>% filter(sample_content == "WWTP") %>% unnest(samples),
+    tax_level = "Family", 
+    abun_limit = 0.1,
+    test_varibles = test_vec
+)
+  print(adonis_results)
+
+  
+p_species_Soil <- PCOA_from_long_df(
+        amp_merge_full_long %>% filter(sample_content == "Soil"),
+        tax_level = "Family",
+        abun_limit = 0.1
+      ) +
+        geom_point(
+          aes(
+            color =basecalling,
+            shape =  primerset
+          ),
+          size = 3, alpha = 1
+        ) +
+       scale_color_manual(values = seq_method_colors) + 
+        theme_marie_clean() +
+          guides(shape = guide_legend(title = "Primer set"), 
+                 color = guide_legend(title = "Sequencing platform")) +
+        ggtitle(paste0("Soil")) 
+
+adonis_results <- ADONIS_from_long_df(
+    data =  amp_merge_full_long %>% filter(sample_content == "Soil") %>% unnest(samples),
+    tax_level = "Family", 
+    abun_limit = 0.1,
+    test_varibles = test_vec
+)
+  print(adonis_results)
+
+
+
+top <- p_species_Zfecal + p_species_AD +  p_species_WWTP + p_species_Soil + 
+  plot_layout(heights = c(1, 1,1,1), guides = "collect") & theme(legend.position = "bottom", legend.box = "vertical",
+                                                                                                                                           axis.title = element_text(size = 11),
+                                                                                                                                           axis.text.y = element_text(size = 10),
+                                                                                                                                           axis.text.x = element_text(size  =10, angle = 0, hjust = 0.5)) 
+
+
+
+  
+  
+
+
+```
+
+
+## Figure 6A Family Heatmap 
+
+```{r}
+
+
+# === 5. Compute OTU rank table ===
+  otu_rank_table <- amp_merge_full_long %>%
+  unnest(samples) %>% 
+  filter(!str_detect(Family, "unclass")) %>% 
+  group_by(Family, sample_content#, basecalling, primerset
+           ) %>%
+  summarise(mean_abun = mean(rel_abun_family, na.rm = TRUE)) %>%
+    arrange(desc(mean_abun), Family) %>%
+    group_by(sample_content#, basecalling, primerset
+             ) %>% 
+    #mutate(ASV_rank = row_number()) %>% 
+    #slice_min(ASV_rank, n = 10) %>% 
+  slice_max(mean_abun, n = 15) %>% ungroup() %>% 
+  arrange(sample_content, desc(mean_abun)) %>%
+  distinct(sample_content, Family) %>% 
+  #arrange(sample_content) %>% 
+  mutate(ASV_rank = row_number()) %>% ungroup()
+
+#%>% 
+#  select(-basecalling, -primerset) 
+# %>% 
+#   pivot_wider(names_from = basecalling, values_from = mean_abun)
+
+  # === 6. Heatmap ===
+  bin_colors <- c("#FFF5EB", "#F5C9B0", "#EC9E75", "#E2733B", "#D94801")
+  #hm_title <- df_long %>% distinct(sample_content) %>% unlist()
+
+  hm <- amp_merge_full_long %>%
+    unnest(samples) %>% 
+    inner_join(otu_rank_table#, by = "Family"
+               ) %>%
+    group_by(Family, basecalling, #ASV_rank, 
+             sample_content, primerset) %>%
+    summarise(mean_abun_2 = mean(rel_abun_family), .groups = "drop") %>%
+    mutate(
+      #OTU_clean = paste0("ASV", ASV_rank),
+      OTU_label = paste0(sample_content, Family),
+      mean_abun_2 = if_else(mean_abun_2 == 0, NA, mean_abun_2),
+      primerset = factor(primerset, levels = c("V4", "V1V3", "V1V8", "OPR"), labels = c("V4", "V1-V3", "V1-V8", "OPR")), 
+    sample_content = factor(sample_content, levels =c("Zmock", "Zfecal", "AD", "WWTP", "Soil")), 
+    ) %>%
+    arrange((mean_abun_2)) %>% 
+      #ASV_rank)) %>% 
+    mutate(OTU_label = fct_inorder(OTU_label)) %>% 
+    ggplot(aes(x = basecalling, y = OTU_label, fill = mean_abun_2)) +
+    geom_tile(color = "white", linewidth = 0.3) +
+    geom_text(aes(label = if_else(mean_abun_2 == 0, "-", sprintf("%.1f", mean_abun_2))), size = 3) +
+    scale_fill_gradientn(colours = bin_colors, na.value = "grey90") +
+    labs(x = NULL, y = NULL, fill = "Relative\nabundance (%)") +
+    facet_nested(sample_content~primerset, space = "free", scales = "free", switch = "y") +
+    scale_y_discrete(expand = c(0, 0), 
+                     labels = function(x) str_replace(x, "^.*?__", "")) +
+    scale_x_discrete(expand = c(0, 0)) +
+    #theme_minimal(base_size = 12) +
+    theme_marie_clean() +
+    theme(
+      axis.text.y = element_text(size = 9, color = "black"),
+      axis.text.x = element_text(size = 12, , color = "black", angle = 0, hjust = 0.5),
+      panel.grid = element_blank(),
+      legend.position = "none", strip.placement = "outside", 
+      strip.text.y.left = element_text(angle = 0, vjust = 1, hjust = 0, size = 16, face = "bold"), 
+      strip.text.x = element_text(size = 16, face = "bold"), 
+    )
+
+hm
+
+```
+
+## Fig 6: HM + beta div. 
+
+```{r}
+
+ hm  | top + #plot_layout(widths = c(1,1 ))  + 
+  plot_layout(heights = c(1, 1,1,1), guides = "collect") & theme(legend.position = "bottom", legend.box = "vertical",
+                                                                                                                                           axis.title = element_text(size = 11),
+                                                                                                                                           axis.text.y = element_text(size = 10),
+                                                                                                                                           axis.text.x = element_text(size  =10, angle = 0, hjust = 0.5)) 
+
+
+plot_name="Fig_6"
+plot_folder=folder_dir_main
+#ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".png"), width = 11, height = 10)
+ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".svg"), width = 11, height = 10, limitsize = F)
+    
+
+```
+
+
+
+## Betadiv V1V3+V1V8
+
+
+```{r}
+
+amp_merge_full_1 <- amp_merge_ampvis2(amp_V1V3_merge, amp_V1V8_merge, by_refseq = FALSE) %>% 
+  amp_subset_samples(rarefy = 29083, normalise = T)
+
+
+amp_merge_full_long <- amp_merge_full_1 %>% 
+  amp_export_long() %>% as_tibble() %>% 
+  group_by(SampleID) %>% 
+  mutate(mapped_reads = sum(count)) %>% ungroup() %>% 
+  group_by(SampleID, OTU) %>% 
+  mutate(rel_abun_ASV = sum(count)) %>% ungroup() %>% 
+  group_by(SampleID, Species) %>% 
+  mutate(rel_abun_species = sum(rel_abun_ASV)) %>% ungroup() %>% 
+  group_by(SampleID, Family) %>% 
+  mutate(rel_abun_family = sum(rel_abun_ASV)) %>% ungroup() %>% 
+  group_by(SampleID, Genus) %>% 
+  mutate(rel_abun_genus = sum(rel_abun_ASV)) %>% ungroup() %>% 
+  nest(samples = c(OTU, mapped_reads, count, Genus, Species, Family,
+                   rel_abun_ASV, rel_abun_species, rel_abun_genus, rel_abun_family))
+
+
+see <- amp_merge_full_long %>% sample_n(3) %>% unnest(samples)
+
+p_species_Zfecal <- PCOA_from_long_df(
+        amp_merge_full_long %>% filter(sample_content == "Zfecal"),
+        tax_level = "Genus",
+        abun_limit = 0.1
+      ) +
+        geom_point(
+          aes(
+            color = basecalling,
+            shape = primerset
+          ),
+          size = 3, alpha = 1
+        ) +
+       scale_color_manual(values = seq_method_colors) + 
+  guides(shape = guide_legend(title = "Primer set"), 
+                 color = guide_legend(title = "Sequencing platform")) +
+        theme_marie_clean() +
+        ggtitle(paste0("Zfecal")) 
+
+adonis_results <- ADONIS_from_long_df(
+    data =  amp_merge_full_long %>% filter(sample_content == "Zfecal") %>% unnest(samples),
+    tax_level = "Genus", 
+    abun_limit = 0.1,
+    test_varibles = test_vec
+)
+  print(adonis_results)
+
+p_species_AD <- PCOA_from_long_df(
+        amp_merge_full_long %>% filter(sample_content == "AD"),
+        tax_level = "Genus",
+        abun_limit = 0.1
+      ) +
+        geom_point(
+          aes(
+            color =basecalling,
+            shape =  primerset
+          ),
+          size = 3, alpha = 1
+        ) +
+       scale_color_manual(values = seq_method_colors) + 
+  guides(shape = guide_legend(title = "Primer set"), 
+                 color = guide_legend(title = "Sequencing platform")) +
+        theme_marie_clean() +
+        ggtitle(paste0("AD")) 
+
+adonis_results <- ADONIS_from_long_df(
+    data =  amp_merge_full_long %>% filter(sample_content == "AD") %>% unnest(samples),
+    tax_level = "Genus", 
+    abun_limit = 0.1,
+    test_varibles = test_vec
+)
+  print(adonis_results)
+
+p_species_WWTP <- PCOA_from_long_df(
+        amp_merge_full_long %>% filter(sample_content == "WWTP"),
+        tax_level = "Genus",
+        abun_limit = 0.1
+      ) +
+        geom_point(
+          aes(
+            color =basecalling,
+            shape =  primerset
+          ),
+          size = 3, alpha = 1
+        ) +
+       scale_color_manual(values = seq_method_colors) + 
+  guides(shape = guide_legend(title = "Primer set"), 
+                 color = guide_legend(title = "Sequencing platform")) +
+        theme_marie_clean() +
+        ggtitle(paste0("WWTP")) 
+
+adonis_results <- ADONIS_from_long_df(
+    data =  amp_merge_full_long %>% filter(sample_content == "WWTP") %>% unnest(samples),
+    tax_level = "Genus", 
+    abun_limit = 0.1,
+    test_varibles = test_vec
+)
+  print(adonis_results)
+
+p_species_Soil <- PCOA_from_long_df(
+        amp_merge_full_long %>% filter(sample_content == "Soil"),
+        tax_level = "Genus",
+        abun_limit = 0.1
+      ) +
+        geom_point(
+          aes(
+            color =basecalling,
+            shape =  primerset
+          ),
+          size = 3, alpha = 1
+        ) +
+       scale_color_manual(values = seq_method_colors) + 
+  guides(shape = guide_legend(title = "Primer set"), 
+                 color = guide_legend(title = "Sequencing platform")) +
+        theme_marie_clean() +
+        ggtitle(paste0("Soil")) 
+
+adonis_results <- ADONIS_from_long_df(
+    data =  amp_merge_full_long %>% filter(sample_content == "Soil") %>% unnest(samples),
+    tax_level = "Genus", 
+    abun_limit = 0.1,
+    test_varibles = test_vec
+)
+  print(adonis_results)
+
+top <- p_species_Zfecal + p_species_AD +  p_species_WWTP + p_species_Soil + plot_layout(heights = c(1, 1,1,1), guides = "collect") & theme(legend.position = "bottom",
+                                                                                                                                           axis.text.x = element_text(angle = 0, hjust=0.5)) 
+
+
+
+
+  
+  
+
+
+```
+
+### Genus Heatmap 
+
+```{r}
+
+
+# === 5. Compute OTU rank table ===
+  otu_rank_table <- amp_merge_full_long %>%
+  unnest(samples) %>% 
+    filter(!str_detect(Genus, "unclass")) %>% 
+  group_by(Genus, sample_content#, basecalling, primerset
+           ) %>%
+  summarise(mean_abun = mean(rel_abun_genus, na.rm = TRUE)) %>%
+    arrange(desc(mean_abun), Genus) %>%
+    group_by(sample_content, 
+             #basecalling, primerset
+             ) %>% 
+    #mutate(ASV_rank = row_number()) %>% 
+    #slice_min(ASV_rank, n = 10) %>% 
+  slice_max(mean_abun, n = 15) %>% ungroup() %>% 
+  #select(-basecalling, -primerset) %>% 
+  arrange(sample_content, desc(mean_abun)) %>%
+  distinct(sample_content, Genus) %>% 
+  #arrange(sample_content) %>% 
+  mutate(ASV_rank = row_number()) %>% ungroup()
+# %>% 
+#   pivot_wider(names_from = basecalling, values_from = mean_abun)
+
+  # === 6. Heatmap ===
+  bin_colors <- c("#FFF5EB", "#F5C9B0", "#EC9E75", "#E2733B", "#D94801")
+  #hm_title <- df_long %>% distinct(sample_content) %>% unlist()
+
+  hm_genus <- amp_merge_full_long %>%
+    unnest(samples) %>% 
+    inner_join(otu_rank_table#, by = "Family"
+               ) %>%
+    group_by(Genus, basecalling, ASV_rank, 
+             sample_content, primerset) %>%
+    summarise(mean_abun_2 = mean(rel_abun_genus), .groups = "drop") %>%
+    mutate(
+      #OTU_clean = paste0("ASV", ASV_rank),
+      OTU_label = paste0(sample_content, Genus),
+      mean_abun_2 = if_else(mean_abun_2 == 0, NA, mean_abun_2),
+      primerset = factor(primerset, levels = c("V4", "V1V3", "V1V8", "OPR")), 
+    sample_content = factor(sample_content, levels =c("Zmock", "Zfecal", "AD", "WWTP", "Soil")), 
+    ) %>% ungroup() %>% 
+    arrange(sample_content, desc(ASV_rank)) %>% 
+    #mutate(OTU_label = fct_inorder(OTU_label)) %>% ungroup() %>% 
+    mutate(OTU_label = fct_inorder(OTU_label)) %>% ungroup() %>% 
+    ggplot(aes(x = basecalling, y = OTU_label, fill = mean_abun_2)) +
+    geom_tile(color = "white", linewidth = 0.3) +
+    geom_text(aes(label = if_else(mean_abun_2 == 0, "-", sprintf("%.1f", mean_abun_2))), size = 3.5) +
+    scale_fill_gradientn(colours = bin_colors, na.value = "grey90") +
+    labs(x = NULL, y = NULL, fill = "Relative\nabundance (%)") +
+    facet_nested(sample_content~primerset, space = "free", scales = "free", switch = "y") +
+    scale_y_discrete(expand = c(0, 0), 
+                     labels = function(x) str_replace(x, "^.*?__", "")) +
+    scale_x_discrete(expand = c(0, 0)) +
+    #theme_minimal(base_size = 12) +
+    theme_marie_clean() +
+    theme(
+      axis.text.y = element_text(size = 9, color = "black"),
+      axis.text.x = element_text(size = 12, , color = "black", angle = 0, hjust = 0.5),
+      panel.grid = element_blank(),
+      legend.position = "none", strip.placement = "outside", 
+      strip.text.y.left = element_text(angle = 0, vjust = 1, hjust = 0, size = 16, face = "bold"), 
+      strip.text.x = element_text(size = 16, face = "bold"), 
+    )
+
+hm_genus
+
+
+```
+
+
+### Family Heatmap 
+
+```{r}
+
+
+# === 5. Compute OTU rank table ===
+  otu_rank_table <- amp_merge_full_long %>%
+  unnest(samples) %>% 
+  group_by(Family, sample_content, basecalling, primerset) %>%
+  summarise(mean_abun = mean(rel_abun_family, na.rm = TRUE)) %>%
+    arrange(desc(mean_abun), Family) %>%
+    group_by(sample_content, basecalling, 
+             primerset) %>% 
+    #mutate(ASV_rank = row_number()) %>% 
+    #slice_min(ASV_rank, n = 10) %>% 
+  slice_max(mean_abun, n = 10) %>% ungroup() %>% 
+  select(-basecalling, -primerset) %>% 
+  arrange(sample_content, desc(mean_abun)) %>%
+  distinct(sample_content, Family) %>% 
+  #arrange(sample_content) %>% 
+  mutate(ASV_rank = row_number()) %>% ungroup()
+# %>% 
+#   pivot_wider(names_from = basecalling, values_from = mean_abun)
+
+  # === 6. Heatmap ===
+  bin_colors <- c("#FFF5EB", "#F5C9B0", "#EC9E75", "#E2733B", "#D94801")
+  #hm_title <- df_long %>% distinct(sample_content) %>% unlist()
+
+  hm <- amp_merge_full_long %>%
+    unnest(samples) %>% 
+    inner_join(otu_rank_table#, by = "Family"
+               ) %>%
+    group_by(Family, basecalling, ASV_rank, 
+             sample_content, primerset) %>%
+    summarise(mean_abun_2 = mean(rel_abun_family), .groups = "drop") %>%
+    mutate(
+      #OTU_clean = paste0("ASV", ASV_rank),
+      OTU_label = paste0(sample_content, Family),
+      mean_abun_2 = if_else(mean_abun_2 == 0, NA, mean_abun_2),
+      primerset = factor(primerset, levels = c("V4", "V1V3", "V1V8", "OPR")), 
+    sample_content = factor(sample_content, levels =c("Zmock", "Zfecal", "AD", "WWTP", "Soil")), 
+    ) %>% ungroup() %>% 
+    arrange(sample_content, desc(ASV_rank)) %>% 
+    #mutate(OTU_label = fct_inorder(OTU_label)) %>% ungroup() %>% 
+    mutate(OTU_label = fct_inorder(OTU_label)) %>% ungroup() %>% 
+    ggplot(aes(x = basecalling, y = OTU_label, fill = mean_abun_2)) +
+    geom_tile(color = "white", linewidth = 0.3) +
+    geom_text(aes(label = if_else(mean_abun_2 == 0, "-", sprintf("%.1f", mean_abun_2))), size = 3.5) +
+    scale_fill_gradientn(colours = bin_colors, na.value = "grey90") +
+    labs(x = NULL, y = NULL, fill = "Relative\nabundance (%)") +
+    facet_nested(sample_content~primerset, space = "free", scales = "free", switch = "y") +
+    scale_y_discrete(expand = c(0, 0), 
+                     labels = function(x) str_replace(x, "^.*?__", "")) +
+    scale_x_discrete(expand = c(0, 0)) +
+    #theme_minimal(base_size = 12) +
+    theme_marie_clean() +
+    theme(
+      axis.text.y = element_text(size = 9, color = "black"),
+      axis.text.x = element_text(size = 12, , color = "black", angle = 0, hjust = 0.5),
+      panel.grid = element_blank(),
+      legend.position = "none", strip.placement = "outside", 
+      strip.text.y.left = element_text(angle = 0, vjust = 1, hjust = 0, size = 16, face = "bold"), 
+      strip.text.x = element_text(size = 16, face = "bold"), 
+    )
+
+  
+  
+  
+hm
+
+
+```
+
+### Fig S12: HM + beta div. 
+
+```{r}
+
+ hm_genus  |  top +
+plot_layout(heights = c(1, 1,1,1), guides = "collect") & theme(legend.position = "bottom", legend.box = "vertical",
+                                                                                                                                           axis.title = element_text(size = 11),
+                                                                                                                                           axis.text.y = element_text(size = 10),
+                                                                                                                                           axis.text.x = element_text(size  =10, angle = 0, hjust = 0.5)) 
+
+
+plot_name="Fig_S12_Complex_betadiv_genus"
+plot_folder=folder_dir_supp
+#ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".png"), width = 11, height = 10)
+ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".svg"), width = 11, height = 10, limitsize = F)
+
+```
+
+
+--------------------------------
+
+# MAKE BIOPROJECT 
+
+
+# MAKE SRA metadata:
+
+
+```{r, eval=FALSE}
+
+file_data <- vroom::vroom("/home/bio.aau.dk/hd95lp/Projects/RETHINK/p_nanopore_amplicon/1_data/primer_test/SRA_upload_all_fastq/SRA_metadata.txt")
+
+metadata_ncbi <- 
+  file_data %>%
+  left_join(new_barcode) %>%  
+  ungroup() %>% 
+  mutate(
+    library_ID = paste0(sequencing_platform , "_", primerset, "_", sample_content, "_", barcode, "_rep_", new_barcode), 
+    sample_name = paste0(sequencing_platform , "_", primerset, "_", sample_content, "_", barcode),
+    title = "Improved Nanopore sequencing accuracy enables ASV-resolved microbial profiling", 
+    library_strategy = "AMPLICON",
+    library_source = case_when(
+      sample_content %in% c("AD", "Soil", "WWTP") ~ "METAGENOMIC", 
+      sample_content %in% c("Zfecal", "Zmock") ~ "SYNTHETIC", 
+    ), 
+    library_selection = "PCR", 
+    library_layout = "single", 
+    platform = case_when(
+      sequencing_platform == "PacBio" ~ "PACBIO_SMRT", 
+      sequencing_platform == "ONT" ~ "OXFORD_NANOPORE",
+    ), 
+    instrument_model = case_when(
+      sequencing_platform == "PacBio" ~ "Revio", 
+      sequencing_platform == "ONT" ~ "PromethION",
+    ), 
+    design_description = case_when(
+      primerset == "V4" ~ "V4 primers used had the following sequences: 5’GTGYCAGCMGCCGCGGTAA 3’ and 5’GGACTACNVGGGTWTCTAAT 3’ (515f;806r)", 
+      primerset == "V1V3" ~ "V1-V3 primers used had the following sequences: 5’ AGAGTTTGATCCTGGCTCAG 3’ and 5’ ATTACCGCGGCTGCTGG 3’ (27f;534r)",
+      primerset == "V1V8" ~ "V1-V8 primers used had the following sequences: 5’ AGRGTTYGATYMTGGCTCAG 3’ and 5’ GACGGGCGGTGWGTRCA (27f;1391r)", 
+      primerset == "OPR" ~ "OPR primers used had the following sequences: 5’ AGRGTTYGATYMTGGCTCAG 3’ and 5’ CGACATCGAGGTGCCAAAC (16S-8f;23S-2490r)",
+    ),
+    filetype = "fastq",
+    ) 
+
+
+
+  
+metadata_ncbi_final <- metadata_ncbi %>% 
+  select(sample_name, library_ID, title, library_strategy,library_source,	library_selection,
+         library_layout,	platform,	instrument_model,	design_description,	filetype, filename)
+
+# Create sample_names()# Create a new workbook
+my_wb <- createWorkbook()
+# Add a worksheet to the workbook
+addWorksheet(my_wb, "Sheet1")
+# Write the data to the worksheet
+writeData(my_wb, "Sheet1", metadata_ncbi_final)
+# Save the workbook to a file
+saveWorkbook(my_wb, paste0("/home/bio.aau.dk/hd95lp/Projects/RETHINK/p_nanopore_amplicon/1_data/primer_test/SRA_upload_all_fastq/20250425_metadata_SRA.xlsx"))
+
+
+```
+
+
+## Sample metadata
+
+```{r, eval=FALSE, echo=TRUE}
+
+pacman::p_load(openxlsx)
+
+#install.packages("xlsx")
+
+attributes_ncbi <- metadata_ncbi %>% 
+  mutate(
+    sample_content_full = case_when(
+      sample_content == "AD" ~ "Anaerobic digester sludge", 
+      sample_content == "WWTP" ~ "Activated sludge from a wastewater treatment plant", 
+      sample_content == "Soil" ~ "Soil from Aalborg, Denmark", 
+      sample_content == "Zmock" ~ "D6305	ZymoBIOMICS Microbial Community DNA Standard", 
+      sample_content == "Zfecal" ~ "D6323	ZymoBIOMICS Fecal Reference with TruMatrix Technology", 
+    ), 
+    sample_title = paste0("Amplicon sequencing of ", sample_content_full, " (", library_source ,") ", " with ", primerset, " primerset using ", sequencing_platform ),
+    organism = case_when(
+      sample_content == "AD" ~ "anaerobic digester sludge metagenome", 
+      sample_content == "WWTP" ~ "activated sludge metagenome", 
+      sample_content == "Soil" ~ "soil metagenome", 
+      sample_content == "Zmock" ~ "ZymoBIOMICS Microbial Community DNA Standard metagenome", 
+      sample_content == "Zfecal" ~ "ZymoBIOMICS Fecal Reference metagenome", 
+    ), 
+    collection_date = case_when(
+      sample_content == "AD" ~ ("2016-03-07"), 
+      sample_content == "WWTP" ~ ("2025-05-27"), 
+      sample_content == "Soil" ~ ("2025-07-21"), 
+      sample_content == "Zmock" ~ ("not applicable"), 
+      sample_content == "Zfecal" ~ ("not applicable"), 
+    ), 
+    env_broad_scale =  case_when(
+      sample_content == "AD" ~ "aquatic biome [ENVO:00002030]", 
+      sample_content == "WWTP" ~ "aquatic biome [ENVO:00002030]", 
+      sample_content == "Soil" ~ "soil [ENVO:00001998]", 
+      sample_content == "Zmock" ~ "mock community culture [ENVO:01001059]", 
+      sample_content == "Zfecal" ~ "mock community culture [ENVO:01001059]",
+    ), 
+    env_local_scale = case_when(
+      sample_content == "AD" ~ "anaerobic sludge [ENVO:00002129]", 
+      sample_content == "WWTP" ~ "activated sludge [ENVO:00002046]", 
+      sample_content == "Soil" ~ "soil [ENVO:00001998]", 
+      sample_content == "Zmock" ~ "mock community culture [ENVO:01001059]", 
+      sample_content == "Zfecal" ~ "fecal material [ENVO:00002003]", 
+    ), 
+    env_medium = case_when(
+      sample_content == "AD" ~ "anaerobic sludge [ENVO:00002129]", 
+      sample_content == "WWTP" ~ "activated sludge [ENVO:00002046]", 
+      sample_content == "Soil" ~ "soil [ENVO:00001998]", 
+      sample_content == "Zmock" ~ "mock community culture [ENVO:01001059]", 
+      sample_content == "Zfecal" ~ "fecal material [ENVO:00002003]", 
+    ), 
+    bioproject_accession = "SUB15854799",
+    geo_loc_name = case_when(
+      sample_content == "AD" ~ "Randers, Denmark (Randers WWTP)", 
+      sample_content == "WWTP" ~ "Aalborg, Denmark (Aalborg West WWTP)", 
+      sample_content == "Soil" ~ "Golfparken, Aalborg, Denmark (near Pilesøen)", 
+      sample_content == "Zmock" ~ "ZymoBIOMICS", 
+      sample_content == "Zfecal" ~ "ZymoBIOMICS", 
+    ), 
+  lat_lon = case_when(
+      sample_content == "AD" ~ "56.4539 N 10.0706 E", 
+      sample_content == "WWTP" ~ "57.0480 N 9.8654 E", 
+      sample_content == "Soil" ~ "57.0243 N 9.9475 E", 
+      sample_content == "Zmock" ~ "not applicable", 
+      sample_content == "Zfecal" ~ "not applicable", 
+    ),
+  biological_replicate = new_barcode 
+  ) %>% 
+  select(sample_name, sample_title, bioproject_accession, 
+         organism, collection_date, env_broad_scale, env_local_scale, env_medium, 
+         geo_loc_name, lat_lon,
+         biological_replicate, library_ID
+         ) 
+
+see <- attributes_ncbi %>% 
+  distinct(organism,geo_loc_name , lat_lon, collection_date , env_broad_scale , .keep_all = F) %>% 
+  write_tsv(file = paste0(WD, "output/files/SRA_upload/sample_metadata.tsv"))
+
+# Create sample_names()# Create a new workbook
+my_wb <- createWorkbook()
+# Add a worksheet to the workbook
+addWorksheet(my_wb, "Sheet1")
+# Write the data to the worksheet
+writeData(my_wb, "Sheet1", attributes_ncbi)
+# Save the workbook to a file
+saveWorkbook(my_wb, paste0("/home/bio.aau.dk/hd95lp/Projects/RETHINK/p_nanopore_amplicon/1_data/primer_test/SRA_upload_all_fastq/20250425_metadata_ncbi.xlsx"))
+
+
+
+```
+
+
+
+
+
+```{r, eval=FALSE, echo=TRUE}
+
+
+
+
+SRA_metadata_all_files <- 
+  SRA_metadata %>% 
+  left_join(file_names)
+
+# Create a new workbook
+my_wb <- createWorkbook()
+# Add a worksheet to the workbook
+addWorksheet(my_wb, "SRA_data")
+# Write the data to the worksheet
+writeData(my_wb, "SRA_data", SRA_metadata_all_files)
+# Save the workbook to a file
+saveWorkbook(my_wb, paste0(WD, "output/files/SRA_upload/20250425_SRA_metadata.xlsx"))
+
+
+write.table(
+  SRA_metadata_all_files,
+  file = paste0(WD, "output/files/SRA_upload/20250425_SRA_metadata.tsv"),
+  sep = "\t",
+  quote = FALSE,
+  row.names = FALSE
+)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
