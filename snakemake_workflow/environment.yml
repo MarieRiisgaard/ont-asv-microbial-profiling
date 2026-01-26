@@ -1,0 +1,14 @@
+name: snakemake_usearch
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - snakemake=9.1.6
+  - snakemake-executor-plugin-slurm=1.1.0
+  - snakedeploy=0.11.0   
+  - snakefmt=0.11.1
+  - graphviz=12.2.1 # to visualize the DAG
+  - gzip=1.13
+  - filtlong=0.2.1
+  - cutadapt=5.1
+  - usearch=11.0.667

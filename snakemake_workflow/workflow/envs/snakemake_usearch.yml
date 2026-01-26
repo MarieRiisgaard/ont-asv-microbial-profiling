@@ -1,0 +1,9 @@
+name: snakemake_usearch
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - gzip=1.13
+  - filtlong=0.2.1
+  - cutadapt=5.1
+  - usearch=11.0.667

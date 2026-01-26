@@ -1,0 +1,7 @@
+workflows:
+  snakemake_usearch_primertrim_and_subset:
+    description: "Pipeline for primer trimming and subsampling Nanopore reads."
+    authors: ["Marie Riisgaard-Jensen"]
+    repository: "file:///home/bio.aau.dk/hd95lp/Projects/RETHINK/p_nanopore_amplicon/snakemake_usearch_primertrim_and_subset"
+    path: "workflow"
+    default_branch: "main"

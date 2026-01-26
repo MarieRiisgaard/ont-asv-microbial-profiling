@@ -1,0 +1,18 @@
+# This file is for various variables used throughout the workflow.
+# See a description of each setting in the README.md file.
+input_dir: ".test/nanopore_run_xyz123/fastq_pass"
+output_dir: "output"
+tmp_dir: "tmp"
+log_dir: "logs"
+# to skip filtering altogether set to "--min_length 1"
+filtlong_args: "--min_length 1"
+db_sintax: "/databases/midas/MiDAS5.3_20240320/FLASVs_w_sintax.fa"
+subsample_sizes: [10000, 20000, 50000]
+max_threads: 32
+sample_sep: "_"
+primers: "AGRGTTYGATYMTGGCTCAG...CCAGCAGCCGCGGTAAT"
+derep_minsize: 2
+unoise_minsize: 8
+minlen: 100
+# reference_amplicons: If you don’t want this step to run, simply leave it blank or comment it out: EG. /home/bio.aau.dk/hd95lp/Projects/RETHINK/p_nanopore_amplicon/1_data/zymo_communities/Zmock/reference_amplicons/V4_bacterial_amplicons.fa
+reference_amplicons: "/home/bio.aau.dk/hd95lp/Projects/RETHINK/p_nanopore_amplicon/1_data/zymo_communities/Zmock/reference_amplicons/V1V3_bacterial_amplicons.fasta"
