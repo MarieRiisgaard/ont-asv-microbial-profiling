@@ -44,7 +44,7 @@ pacman::p_load(
   ggrepel,
   ggtext,
   ggnewscale,
-  Biostrings, #Changes the rename function? 
+  #Biostrings, #Changes the rename function? 
   #viridis, 
   vegan,
   ggpubr,
@@ -59,12 +59,12 @@ pacman::p_load(
 
 
 #WD <- "~/Projects/RETHINK/p_nanopore_amplicon/6_snakemake_usearch_run_all"
-WD <- "/home/bio.aau.dk/hd95lp/Projects/RETHINK/ASV_resolved_community_with_ONT/postprocessing"
+WD <- "/home/bio.aau.dk/hd95lp/Projects/RETHINK/ont-asv-microbial-profiling/postprocessing"
 
 setwd(WD)
 
 
-plot_dir <- "/home/bio.aau.dk/hd95lp/Projects/RETHINK/ASV_resolved_community_with_ONT/postprocessing/figures/"
+plot_dir <- "/home/bio.aau.dk/hd95lp/Projects/RETHINK/ont-asv-microbial-profiling/postprocessing/figures/"
 folder_dir_main <- "main"
 folder_dir_supp <- "suppl"
 
@@ -144,11 +144,8 @@ Imports reads:
 - After cutadapt
 
 
-## Figure S14
 
 ```{r, include=FALSE}
-
-
 not_used <- c("barcode11",              "barcode23",
               "barcode35",              "barcode47",
               "barcode59",              "barcode71",
@@ -197,8 +194,8 @@ custom_breaks_minimal = c(100, 1000, 10000, 100000, 1000000)
 
 reads_per_barcode <- 
   vroom::vroom(paste0(WD, "/results/stats_raw_reads/reads_per_barcode_for_all_subsets.tsv"), show_col_types = FALSE) %>% 
-  rename("run_folder" = "dataset", 
-       "subsample_size" = "subsampling_group") %>% 
+  dplyr::rename("dataset" = "run_folder", 
+       "subsampling_group" = "subsample_size") %>% 
   filter(subsampling_group  == "sample_size_all_reads") %>% 
   separate(dataset, into = c("basecalling", "rem", "primerset", "sample_content", "rem3", "rem6")) %>% 
   select(-rem, -rem3, -rem6)
@@ -218,10 +215,12 @@ stats_df %>%
   mutate(p_with_primer = reads / num_seqs *100) %>% 
   group_by(primerset, basecalling) %>% 
   summarise(mean = mean(p_with_primer))
-  
+```
 
-  
 
+## Detection of primers 
+
+```{r, include=FALSE}
 plot_df <- stats_df %>% 
   mutate(x = "x", 
          barcode_num = as.numeric(str_remove(barcode, "barcode"))) %>% 
@@ -309,7 +308,7 @@ plot_df %>%
   )
 
   
-plot_name="Fig_S13_Primer_detection"
+plot_name="Primer_detection"
 plot_folder=folder_dir_supp
 ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".png"), width = 14, height = 8)
 
@@ -321,7 +320,82 @@ rm(stats_df, stats_hyp_df_sup, stats_pacbio_df_hyp_notrim, not_used)
 
 ```
 
-## S7: Quality of reads
+
+## Number of reads based on primer
+
+```{r}
+
+plot_df <- stats_df %>% 
+  mutate(x = "x", 
+         barcode_num = as.numeric(str_remove(barcode, "barcode"))) %>% 
+  filter(!barcode %in% not_used) %>% 
+  left_join(reads_per_barcode) %>% 
+  left_join(new_barcode) 
+
+##################
+
+plot_df %>%
+  mutate(platform  = factor(basecalling, levels =c("pacbio", "super"), labels = c("PacBio", "ONT")),
+                  sample_content = factor(sample_content, 
+                                          levels =c("Zmock", "Zfecal", "AD", "WWTP", "Soil"), 
+                                          labels = c("Zmock", "Fecal", "AD", "WWTP", "Soil")), 
+         primerset = factor(
+      primerset,
+      levels = c("V4", "V1V3", "V1V8", "OPR"),
+      labels = c("V4", "V1-V3", "V1-V8", "OPR")
+    )
+  ) %>%
+  ggplot(aes(
+    x = primerset,
+    y = num_seqs,
+    colour = sample_content,
+    group = interaction(primerset, sample_content)
+  )) +
+  geom_boxplot(aes( group = primerset),
+    position = position_dodge(width = 0.8),
+    width = 0.7, color = "black",
+    outlier.shape = NA
+  ) +
+  geom_point(
+    position = position_jitterdodge(
+      jitter.width = 0.15,
+      jitter.height = 0,
+      dodge.width = 0.8,
+      seed = 42
+    ),
+    size = 1.8,
+    alpha = 0.8
+  ) +
+  facet_wrap(~platform, scales = "free_y") +
+  scale_y_continuous(
+    labels = scales::label_number(scale = 1e-6, suffix = " M"
+                                  ),
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  labs(
+    x = "Primer set",
+    y = "Reads per technical replicate (millon reads)",
+    colour = "Sample type"
+  ) +
+  theme_marie_clean() +
+  theme(
+    panel.grid.minor = element_blank(),
+    #strip.background = element_rect(fill = "grey95"),
+    strip.text = element_text(face = "bold"),
+    legend.position = "bottom"
+  )
+
+plot_name="Fig_SXX_Raw_reads_per_primer"
+plot_folder=folder_dir_supp
+ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".png"), width = 8, height = 8)
+ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".svg"), width = 8, height = 8)
+
+
+```
+
+
+
+## Figure S9: Quality of reads
 
 ```{r}
 
@@ -428,15 +502,15 @@ p <- ggplot(df, aes(x = Q_bin, y = adjust_cout, color = method, fill = method)) 
 print(p)
 
 
-plot_name="Fig_S7_Read_quality"
+plot_name="Fig_S9_Read_quality"
 plot_folder=folder_dir_supp
 ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".png"), width = 14, height = 8)
+ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".svg"), width = 14, height = 8)
 
 
 rm(p, median_df, df, weightedMedian, metadata, parse_qbin_file, indir, files)
 
 ```
-
 
 
 # Load reference amplicons
@@ -562,9 +636,9 @@ ADONIS_from_long_df <- function(
                      mutate(over_limit = if_else(rel_abun_species >= abun_limit, T, F)) %>% 
       #          )) %>% 
       # unnest(samples) %>%
-      rename(
-        "Species" = "tax_level" ,
-        "rel_abun_species"="tax_abun" 
+      dplyr::rename(
+        "tax_level" = "Species",
+        "tax_abun" = "rel_abun_species"
       )
      
   } else if (tax_level == "Genus") {
@@ -578,8 +652,8 @@ ADONIS_from_long_df <- function(
       #          )) %>% 
       # unnest(samples) %>% 
       rename(
-        "Genus" = "tax_level" ,
-        "rel_abun_genus"="tax_abun" 
+        "tax_level" = "Genus",
+        "tax_abun"="rel_abun_genus" 
       )
      
     
@@ -594,8 +668,8 @@ ADONIS_from_long_df <- function(
                #)) %>% 
       #unnest(samples) %>% 
       rename(
-        "OTU" = "tax_level" ,
-        "count"="tax_abun" 
+        "tax_level" = "OTU" ,
+        "tax_abun"="count" 
       )
     
     print(df_tax_level)
@@ -615,8 +689,8 @@ ADONIS_from_long_df <- function(
                #)) %>% 
       #unnest(samples) %>% 
       rename(
-        "Family" = "tax_level" ,
-        "rel_abun_family"="tax_abun"
+        "tax_level" = "Family" ,
+        "tax_abun"="rel_abun_family"
         ) 
      
   } else if (tax_level == "Order") {
@@ -666,7 +740,7 @@ ADONIS_from_long_df <- function(
                      mutate(over_limit = if_else(rel_abun_phylum >= abun_limit, T, F))
                )) %>% 
       unnest(samples) %>% 
-      rename(
+      dplyr::rename(
         "tax_level" = "Phylum",
         "tax_abun" = "rel_abun_phylum"
       )
@@ -869,7 +943,8 @@ load_subsample_structure <- function(
     meta <- parse_folder(dataset)
     
     # paths
-    subsample_dir <- file.path(base_dir, dataset, "output", "03-subsample")
+    #subsample_dir <- file.path(base_dir, dataset, "output", "03-subsample")
+    subsample_dir <- file.path(base_dir, dataset, "output", "04-denoise")
     log_file <- file.path(base_dir, dataset, "logs", "03-subsample", "concat_all_trimmed.log")
     
     # subsample folders
@@ -1026,7 +1101,7 @@ global_ASVs_zymo_all_ref_match <- global_ASVs_zymo_all %>%
     )  
   
  
-rm(partial_macthes, exact_macthes, zymo_matches)
+rm(partial_macthes, zymo_matches)
 
 
 
@@ -1075,10 +1150,11 @@ rm(save_global_zutu_subset,primers, samples)
 
 
 
-## Lenght distribution of seqs 
+## Fig S18 (or S1) Lenght distribution of seqs 
 
 ```{r}
 
+base_dir <- paste0(WD, "/results/global_ASVs/")
 
 f_OPR <- paste0(base_dir,"OPR/global_ASVs.fa")
 f_V4 <-  paste0(base_dir, "V4/global_ASVs.fa")
@@ -1109,7 +1185,7 @@ df_all <- map2_dfr(
   .x = files,
   .y = names(files),
   .f = ~ {
-    seqs <- readDNAStringSet(.x)
+    seqs <- Biostrings::readDNAStringSet(.x)
     tibble(
       primerset = .y,
       seq_name  = names(seqs),
@@ -1247,10 +1323,9 @@ p_V4 + p_V1V3 + p_V1V8 + p_OPR +
                   ) & theme(legend.position = "bottom")
 
 
-plot_name="Fig_S14_lenght_distribution"
+plot_name="Fig_S18_lenght_distribution"
 plot_folder=folder_dir_supp
 ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".png"), width = 14, height = 8)
-
 
 
 
@@ -1263,11 +1338,11 @@ ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".png"), width = 14, he
 ```{r}
 
 # Path to uchime_ref directory
-base_dir <- "/home/bio.aau.dk/hd95lp/Projects/RETHINK/ASV_resolved_community_with_ONT/postprocessing/results/uchime_ref"
+base_dir <- "/home/bio.aau.dk/hd95lp/Projects/RETHINK/ont-asv-microbial-profiling/postprocessing/results/uchime_ref"
 
 # Identify primer folders automatically
 primers <- list.dirs(base_dir, full.names = FALSE, recursive = FALSE)
-
+#primer = "V4"
 # Function to load one uchime table
 load_uchime_table <- function(primer) {
   txt_path <- file.path(base_dir, primer, "asvs_uchime_ref.txt")
@@ -1360,7 +1435,7 @@ summary_all_non_exact_remain <- summary_all_non_exact %>%
 ```{r, include=FALSE}
 
 custom_breaks_minimal=c(0, 10, 100, 200, 1000,2000,  10000, 20000,100000, 200000,1000000) # Mortens suggestion
-custom_breaks_minimal=c(0, 10, 100, 1000,  10000,100000,1000000) # Mortens suggestion
+custom_breaks_minimal=c(0, 10, 100, 1000,  10000,100000, 1000000) # Mortens suggestion
 
 included_groups = c(
   "sample_size_100", "sample_size_1000", "sample_size_10000" , "sample_size_100000" , "sample_size_1000000", 
@@ -1384,7 +1459,7 @@ label_data <- ref_amplicons %>%
 # Summerise exact matches + total matches 
 ASV_matches_to_plot <- global_ASVs_zymo_all_ref_match %>% 
   filter(!global_asv_id %in% unlist(lenght_df$global_asv_id)) %>% 
-  filter(!global_asv_id %in% unlist(uchime_positives_zmock$global_asv_id)) %>% 
+  #filter(!global_asv_id %in% unlist(uchime_positives_zmock$global_asv_id)) %>% 
   filter(basecalling != "hyper") %>% 
   filter(sample_content == "Zmock" ) %>% 
   filter(subsampling_group %in% included_groups) %>% 
@@ -1395,7 +1470,7 @@ ASV_matches_to_plot <- global_ASVs_zymo_all_ref_match %>%
     total_ASVs = sum(n_ASV)
   ) %>% 
   ungroup() %>% 
-  filter(Match_type_2 == "Exact") %>% rename("n_ASV" = "exact_match") %>% 
+  filter(Match_type_2 == "Exact") %>% rename( "exact_match" = "n_ASV") %>% 
   select(-Match_type_2) %>% 
   pivot_longer(cols = c(exact_match, total_ASVs), names_to = "ASV_type", values_to = "n_ASV") 
   
@@ -1575,7 +1650,7 @@ ASV_matches_to_plot <- global_ASVs_zymo_all_ref_match %>%
     total_ASVs = sum(n_ASV)
   ) %>% 
   ungroup() %>% 
-  filter(Match_type_2 == "Exact") %>% rename("n_ASV" = "exact_match") %>% 
+  filter(Match_type_2 == "Exact") %>% rename("exact_match" = "n_ASV") %>% 
   select(-Match_type_2) %>% 
   pivot_longer(cols = c(exact_match, total_ASVs), names_to = "ASV_type", values_to = "n_ASV") 
   
@@ -1844,6 +1919,64 @@ wrap_plots(plots, ncol = 4, axes = "collect", guides = "collect") & theme(legend
 plot_name="Fig_S1_Zmock_fold_difference"
 plot_folder=folder_dir_supp
 ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".svg"), width = 14, height = 7)
+ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".png"), width = 14, height = 7)
+
+
+```
+
+### New supp. V4 Zmock Samonella test
+
+```{r}
+library(tidyverse)
+
+outdir <- "/home/bio.aau.dk/hd95lp/Projects/RETHINK/ont-asv-microbial-profiling/postprocessing/results/manual_check_V4_zmock"
+
+hits <- map_dfr(c("PB", "ONT"), function(platform) {
+  read_tsv(
+    file.path(outdir, paste0(platform, "_map_raw.tsv")),
+    col_names = c("read_id", "reference"),
+    show_col_types = FALSE
+  ) %>%
+    mutate(platform = platform)
+}) %>%
+  mutate(
+    barcode = str_extract(read_id, "^barcode[0-9]+"),
+    reference = str_remove(reference, ";.*")
+  ) %>%
+  filter(reference %in% c("Salmonella_5", "Salmonella_7")) %>%
+  count(platform, reference, barcode, name = "n_obs") %>%
+  group_by(platform) %>%
+  mutate(
+    fraction = n_obs / sum(n_obs)) %>%
+  group_by(platform, reference) %>% 
+  mutate(total_read = sum(n_obs)) %>% 
+  ungroup()
+
+ggplot(hits, aes(x = reference, y = fraction, fill = barcode)) +
+  geom_col(width = 0.7) +
+  facet_wrap(~platform, nrow = 1) +
+  scale_x_discrete(limits = c("Salmonella_5", "Salmonella_7"), labels = c("Salmonella (n=6)", "Salmonella (n=1)")) +
+  scale_y_continuous(
+    labels = scales::label_percent(), limits = c(0,1), breaks = seq(0,1, 0.10),
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  geom_text(aes(label = total_read, y = 1 )) +
+  labs(
+    x = NULL,
+    y = "Fraction of Salmonella-matching reads",
+    fill = "Barcode"
+  ) +
+  theme_classic(base_size = 13) +
+  theme_marie_clean() +
+  theme(
+    strip.background = element_blank(),
+    strip.text = element_text(face = "bold")
+  )
+
+plot_name="Fig_S_new_Samonella_exact_matches"
+plot_folder=folder_dir_supp
+ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".svg"), width = 8, height = 6)
+ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".png"), width = 8, height = 6)
 
 
 ```
@@ -2045,7 +2178,7 @@ ASV_matches_to_plot <- global_ASV_mapped_DADA2 %>%
     total_ASVs = sum(n_ASV)
   ) %>% 
   ungroup() %>% 
-  filter(ASV_type == "Exact") %>% rename("n_ASV" = "exact_match") %>% 
+  filter(ASV_type == "Exact") %>% dplyr::rename("exact_match" = "n_ASV") %>% 
   select(-ASV_type) %>% 
   pivot_longer(cols = c(exact_match, total_ASVs), names_to = "ASV_type", values_to = "n_ASV") 
   
@@ -2206,6 +2339,7 @@ rbind(
 plot_name="Fig_S2_DADA2_read_vs_generated_ASVs"
 plot_folder=folder_dir_supp
 ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".svg"), width = 15, height = 10)
+ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".png"), width = 15, height = 10)
 
 rm(base_df, df_filled, exiting_comb, missing, plot_data_DADA, plot_df, subset_not_run, ASV)
 
@@ -2351,6 +2485,7 @@ read_and_format_to_amp_object <- function(
     pivot_longer(cols = contains("barcode")) %>% 
     pivot_wider(names_from = c(basecalling, name), values_from = value, values_fill = 0) %>% 
     select(contains("barcode"), global_asv_id) %>% 
+    filter(!global_asv_id %in% unlist(lenght_df$global_asv_id)) %>% 
     column_to_rownames("global_asv_id") %>% 
     #select(-ref_name) %>% 
     as.matrix()
@@ -2403,7 +2538,8 @@ run_diversity_pipeline <- function(
     base_dir2 = base_dir2,
     primerset_name = primerset_name,
     subsample_group = subsample_group,
-    global_ASVs_zymo_all_ref_match = global_ASVs_zymo_all_ref_match,
+    global_ASVs_zymo_all_ref_match = global_ASVs_zymo_all_ref_match %>% filter(!global_asv_id %in% unlist(lenght_df$global_asv_id)) 
+,
     new_barcode = new_barcode,
     type = type
   )
@@ -2517,7 +2653,8 @@ run_diversity_pipeline <- function(
     left_join(
       global_ASVs_zymo_all_ref_match %>%
         select(global_asv_id, species, copynumber) %>%
-        rename("global_asv_id" = "OTU")
+        rename("OTU" = "global_asv_id")
+        #rename("global_asv_id" = "OTU")
     ) %>%
     group_by(OTU, basecalling, species, copynumber, ASV_rank, is_ref) %>%
     summarise(mean_abun_2 = mean(count), .groups = "drop") %>%
@@ -2533,11 +2670,11 @@ run_diversity_pipeline <- function(
         paste0(species, "; ", str_replace(str_remove(OTU, primerset_name), "_GZOTU", "ASV"), " (n=", copynumber, ")"),
         str_replace(str_remove(OTU, primerset_name), "_GZOTU", "ASV")
       ),
-     OTU_label = if_else(
-        OTU %in% c(unlist(lenght_df$global_asv_id), unlist(uchime_positives_zmock$global_asv_id)),
-        paste0("•", OTU_label),
-        OTU_label
-      ),
+     # OTU_label = if_else(
+     #    OTU %in% c(unlist(lenght_df$global_asv_id), unlist(uchime_positives_zmock$global_asv_id)),
+     #    paste0("•", OTU_label),
+     #    OTU_label
+     #  ),
       mean_abun_2 = if_else(mean_abun_2 == 0, NA, mean_abun_2)
     ) %>%
     arrange(desc(ASV_rank)) %>% 
@@ -2577,7 +2714,7 @@ run_diversity_pipeline <- function(
   adonis_results <- ADONIS_from_long_df(
     data = df_long_,
     tax_level = "OTU", 
-    abun_limit = 0.1,
+    abun_limit = 0,
     test_varibles = test_vec
 )
   print(adonis_results)
@@ -2623,6 +2760,1177 @@ run_diversity_pipeline <- function(
 
 ```
 
+### Function  V2
+
+```{r}
+
+run_diversity_pipeline_v2 <- function(
+  base_dir,
+  base_dir2,
+  primerset_name,
+  subsample_group = "all_reads",
+  global_ASVs_zymo_all_ref_match,
+  new_barcode,
+  type = "_all",
+  rarefy_depth = NULL,
+  seq_method_colors = c("#CC007A", "#0077B6"),
+  n_permutations = 9999
+) {
+
+  suppressPackageStartupMessages({
+    library(tidyverse)
+    library(ampvis2)
+    library(patchwork)
+    library(rstatix)
+    library(ggpubr)
+    library(forcats)
+    library(vegan)
+    library(permute)
+  })
+
+  # ---------------------------------------------------------------------------
+  # Helper functions
+  # ---------------------------------------------------------------------------
+
+  p_to_significance <- function(p) {
+    case_when(
+      is.na(p)  ~ "NA",
+      p <= 1e-4 ~ "****",
+      p <= 1e-3 ~ "***",
+      p <= 1e-2 ~ "**",
+      p <= 0.05 ~ "*",
+      TRUE      ~ "ns"
+    )
+  }
+
+  format_p_value <- function(p) {
+    if (is.na(p)) {
+      return("NA")
+    }
+
+    if (p < 0.001) {
+      return("< 0.001")
+    }
+
+    paste0("= ", sprintf("%.3f", p))
+  }
+
+  # ---------------------------------------------------------------------------
+  # 1. Load ampvis object
+  # ---------------------------------------------------------------------------
+
+  amp_obj <- read_and_format_to_amp_object(
+    base_dir = base_dir,
+    base_dir2 = base_dir2,
+    primerset_name = primerset_name,
+    subsample_group = subsample_group,
+    global_ASVs_zymo_all_ref_match = global_ASVs_zymo_all_ref_match,
+    new_barcode = new_barcode,
+    type = type
+  )
+
+  # Optional rarefaction
+  if (!is.null(rarefy_depth)) {
+    amp_obj <- amp_obj %>%
+      amp_subset_samples(rarefy = rarefy_depth)
+  }
+
+  # ---------------------------------------------------------------------------
+  # 2. Format metadata
+  # ---------------------------------------------------------------------------
+
+  amp_obj$metadata <- amp_obj$metadata %>%
+    mutate(
+      type = sub(".*_", "", SampleID),
+
+      abun_tab = case_when(
+        type == "all"   ~ "-otutab",
+        type == "exact" ~ "-search_exact",
+        TRUE            ~ NA_character_
+      ),
+
+      basecalling = factor(
+        basecalling,
+        levels = c("pacbio", "super"),
+        labels = c("PacBio", "ONT")
+      ),
+
+      barcode = factor(barcode)
+    )
+
+  # ---------------------------------------------------------------------------
+  # 3. Alpha diversity
+  # ---------------------------------------------------------------------------
+
+  amp_alpha_div <- amp_obj %>%
+    amp_alpha_diversity()
+
+  plots_list <- amp_alpha_div %>%
+    select(-Simpson) %>%
+    pivot_longer(
+      cols = c(uniqueOTUs, Shannon, invSimpson),
+      names_to = "name",
+      values_to = "value"
+    ) %>%
+    mutate(
+      name = case_when(
+        str_detect(name, "Shannon") ~ "Shannon",
+        str_detect(name, "invSimp") ~ "Inverse Simpson",
+        str_detect(name, "unique") ~ "Unique ASVs", .default = NA
+      )
+    ) %>% 
+    group_split(name)
+
+  make_alpha_plot <- function(df) {
+
+    metric_name <- unique(df$name)
+
+    df <- df %>%
+      mutate(
+        basecalling = factor(
+          basecalling,
+          levels = c("PacBio", "ONT")
+        ),
+        barcode = factor(barcode)
+      ) %>%
+      arrange(barcode, basecalling)
+
+    
+  test_values <- df %>%
+  select(barcode, basecalling, value) %>%
+  distinct() %>%
+  pivot_wider(
+    names_from = basecalling,
+    values_from = value
+  ) %>%
+  drop_na(PacBio, ONT)
+
+all_values <- c(
+  test_values$PacBio,
+  test_values$ONT
+)
+
+alpha_p <- if (nrow(test_values) < 2) {
+
+  NA_real_
+
+} else if (dplyr::n_distinct(all_values) == 1) {
+
+  # All values across both groups are identical
+  1
+
+} else {
+
+  tryCatch(
+    t.test(
+      test_values$PacBio,
+      test_values$ONT,
+      paired = FALSE,
+      var.equal = FALSE
+    )$p.value,
+    error = function(e) NA_real_
+  )
+}
+
+y_max <- max(df$value, na.rm = TRUE)
+
+alpha_test <- tibble(
+  group1 = "PacBio",
+  group2 = "ONT",
+  p = alpha_p,
+  p.signif = p_to_significance(alpha_p),
+  y.position = y_max * 1.08
+)
+
+    ggplot(
+      df,
+      aes(
+        x = basecalling,
+        y = value,
+        color = basecalling
+      )
+    ) +
+      # Connect matched PCR replicates
+      # geom_line(
+      #   aes(group = barcode),
+      #   color = "grey70",
+      #   linewidth = 0.45
+      # ) +
+      geom_jitter(
+        width = 0.08,
+        height = 0,
+        size = 2.4,
+        alpha = 0.85
+      ) +
+      # geom_point(
+      #   size = 2.8,
+      #   stroke = 0.8
+      # ) +
+      ggpubr::stat_pvalue_manual(
+        alpha_test,
+        label = "p.signif",
+        xmin = "group1",
+        xmax = "group2",
+        y.position = "y.position",
+        tip.length = 0.02,
+        hide.ns = FALSE,
+        inherit.aes = FALSE
+      ) +
+      scale_color_manual(
+        values = seq_method_colors
+      ) +
+      scale_y_continuous(
+        limits = c(0, y_max * 1.20),
+        expand = expansion(mult = c(0, 0.02))
+      ) +
+      labs(
+        x = NULL,
+        y = metric_name,
+        title = "B"
+      ) +
+      guides(
+        color = "none"
+      ) +
+      theme_marie_clean() +
+      theme(
+        legend.position = "none",
+        axis.text.x = element_text(
+          angle = 0,
+          hjust = 0.5
+        ),
+        plot.title = element_text(
+        size = 20,
+        hjust = 0
+      )
+      )
+  }
+
+  plot_list <- lapply(
+    plots_list,
+    make_alpha_plot
+  )
+
+  alpha_patchwork <- wrap_plots(
+    plot_list,
+    ncol = 3,
+    guides = "collect", 
+  )
+
+  # ---------------------------------------------------------------------------
+  # 4. Export normalized long-format abundance data
+  # ---------------------------------------------------------------------------
+
+  df_long <- amp_obj %>%
+    amp_subset_samples(normalise = TRUE) %>%
+    amp_export_long() %>%
+    as_tibble()
+
+  # ---------------------------------------------------------------------------
+  # 5. Calculate OTU rank
+  # ---------------------------------------------------------------------------
+
+  otu_rank_table <- df_long %>%
+    group_by(OTU) %>%
+    summarise(
+      mean_abun = mean(count, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    arrange(
+      desc(mean_abun),
+      OTU
+    ) %>%
+    mutate(
+      ASV_rank = row_number()
+    )
+
+  # ---------------------------------------------------------------------------
+  # 6. Heatmap
+  # ---------------------------------------------------------------------------
+
+  bin_colors <- c(
+    "#FFF5EB",
+    "#F5C9B0",
+    "#EC9E75",
+    "#E2733B",
+    "#D94801"
+  )
+
+  exact_reference_ids <- global_ASVs_zymo_all_ref_match %>%
+    filter(Match_type == "Exact") %>%
+    pull(global_asv_id)
+
+  reference_information <- global_ASVs_zymo_all_ref_match %>%
+    select(
+      global_asv_id,
+      species,
+      copynumber
+    ) %>%
+    rename(
+      OTU = global_asv_id
+    )
+
+  # IDs marked with a bullet in the heatmap
+  flagged_ids <- c(
+    unlist(lenght_df$global_asv_id)
+    # ,
+    # unlist(uchime_positives_zmock$global_asv_id)
+  )
+
+  heatmap_data <- df_long %>%
+    left_join(
+      otu_rank_table,
+      by = "OTU"
+    ) %>%
+    mutate(
+      is_ref = OTU %in% exact_reference_ids
+    ) %>%
+    left_join(
+      reference_information,
+      by = "OTU"
+    ) %>%
+    group_by(
+      OTU,
+      basecalling,
+      species,
+      copynumber,
+      ASV_rank,
+      is_ref
+    ) %>%
+    summarise(
+      mean_abun_2 = mean(count, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    mutate(
+      OTU_clean = paste0(
+        "ASV",
+        ASV_rank
+      ),
+
+      OTU_label = if_else(
+        is_ref,
+        paste0(
+          species,
+          "; ",
+          str_replace(
+            str_remove(OTU, primerset_name),
+            "_GZOTU",
+            "ASV"
+          ),
+          " (n=",
+          copynumber,
+          ")"
+        ),
+        str_replace(
+          str_remove(OTU, primerset_name),
+          "_GZOTU",
+          "ASV"
+        )
+      ),
+
+      # OTU_label = if_else(
+      #   OTU %in% flagged_ids,
+      #   paste0("•", OTU_label),
+      #   OTU_label
+      # ),
+
+      mean_abun_2 = if_else(
+        mean_abun_2 == 0,
+        NA_real_,
+        mean_abun_2
+      ),
+
+      heatmap_label = if_else(
+        is.na(mean_abun_2),
+        "0",
+        sprintf("%.1f", mean_abun_2)
+      )
+    ) %>%
+    arrange(
+      desc(ASV_rank)
+    ) %>%
+    mutate(
+      OTU_label = fct_inorder(OTU_label)
+    )
+
+  hm <- ggplot(
+    heatmap_data,
+    aes(
+      x = basecalling,
+      y = OTU_label,
+      fill = mean_abun_2
+    )
+  ) +
+    geom_tile(
+      color = "white",
+      linewidth = 0.3
+    ) +
+    geom_text(
+      aes(label = heatmap_label),
+      size = 3.5
+    ) +
+    scale_fill_gradientn(
+      colours = bin_colors,
+      na.value = "white"
+    ) +
+    scale_y_discrete(
+      expand = c(0, 0)
+    ) +
+    scale_x_discrete(
+      expand = c(0, 0)
+    ) +
+    labs(
+      x = NULL,
+      y = NULL,
+      fill = "Relative\nabundance (%)", 
+      title = "A"
+    ) +
+    theme_minimal(
+      base_size = 12
+    ) +
+    theme(
+      axis.text.y = element_text(
+        size = 12,
+        color = "black"
+      ),
+      axis.text.x = element_text(
+        size = 12,
+        color = "black"
+      ),
+      plot.title = element_text(
+        size = 20,
+        hjust = 0
+      ),
+      panel.grid = element_blank(),
+      legend.position = "bottom"
+    )
+
+  # ---------------------------------------------------------------------------
+  # 7. Construct sample-by-ASV matrix for beta diversity
+  # ---------------------------------------------------------------------------
+
+  beta_wide <- df_long %>%
+    group_by(
+      SampleID,
+      OTU
+    ) %>%
+    summarise(
+      abundance = sum(count, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    pivot_wider(
+      names_from = OTU,
+      values_from = abundance,
+      values_fill = 0
+    )
+
+  beta_metadata <- amp_obj$metadata %>%
+    as_tibble() %>%
+    distinct(
+      SampleID,
+      .keep_all = TRUE
+    ) %>%
+    filter(
+      SampleID %in% beta_wide$SampleID
+    ) %>%
+    mutate(
+      basecalling = factor(
+        basecalling,
+        levels = c("PacBio", "ONT")
+      ),
+      barcode = factor(barcode)
+    )
+
+  # Match metadata order to abundance-matrix order
+  beta_metadata <- beta_metadata[
+    match(
+      beta_wide$SampleID,
+      beta_metadata$SampleID
+    ),
+  ]
+
+  stopifnot(
+    identical(
+      beta_wide$SampleID,
+      beta_metadata$SampleID
+    )
+  )
+
+  beta_matrix <- beta_wide %>%
+    select(-SampleID) %>%
+    as.data.frame()
+
+  rownames(beta_matrix) <- beta_wide$SampleID
+
+  bray_dist <- vegan::vegdist(
+    beta_matrix,
+    method = "bray"
+  )
+
+  # ---------------------------------------------------------------------------
+  # 8. Paired PERMANOVA
+  #
+  # barcode is included as a blocking term in the model.
+  # Permutations are restricted within each barcode.
+  # ---------------------------------------------------------------------------
+
+  permutation_design <- permute::how(
+    nperm = n_permutations,
+    blocks = beta_metadata$barcode
+  )
+
+  adonis_results <- vegan::adonis2(
+    beta_matrix ~ barcode + basecalling,
+    data = beta_metadata,
+    method = "bray",
+    permutations = permutation_design,
+    by = "margin"
+  )
+
+  print(adonis_results)
+
+  platform_row <- which(
+    rownames(adonis_results) == "basecalling"
+  )
+  
+  replicate_row <- which(
+  rownames(adonis_results) == "barcode"
+)
+
+replicate_r2 <- adonis_results[
+  replicate_row,
+  "R2"
+]
+
+  platform_r2 <- adonis_results[
+    platform_row,
+    "R2"
+  ]
+
+  platform_p <- adonis_results[
+    platform_row,
+    "Pr(>F)"
+  ]
+  
+  barcode_p <- adonis_results[
+    replicate_row,
+    "Pr(>F)"
+  ]
+
+  # ---------------------------------------------------------------------------
+  # 9. PERMDISP
+  # ---------------------------------------------------------------------------
+
+  dispersion_model <- vegan::betadisper(
+    bray_dist,
+    group = beta_metadata$basecalling,
+    type = "median",
+    bias.adjust = TRUE
+  )
+
+  dispersion_results <- vegan::permutest(
+    dispersion_model,
+    permutations = permutation_design
+  )
+
+  print(dispersion_results)
+
+  dispersion_p <- dispersion_results$tab[
+    1,
+    "Pr(>F)"
+  ]
+
+  # ---------------------------------------------------------------------------
+  # 10. PCoA
+  # ---------------------------------------------------------------------------
+
+  pcoa_model <- vegan::wcmdscale(
+    bray_dist,
+    k = 2,
+    eig = TRUE,
+    add = "lingoes"
+  )
+
+  beta_scores <- as.data.frame(
+    pcoa_model$points[, 1:2, drop = FALSE]
+  )
+
+  colnames(beta_scores) <- c(
+    "PCo1",
+    "PCo2"
+  )
+
+  beta_scores <- beta_scores %>%
+    rownames_to_column("SampleID") %>%
+    left_join(
+      beta_metadata,
+      by = "SampleID"
+    ) %>%
+    arrange(
+      barcode,
+      basecalling
+    )
+
+  positive_eigenvalues <- pcoa_model$eig[
+    pcoa_model$eig > 0
+  ]
+
+  pcoa1_variance <- 100 *
+    positive_eigenvalues[1] /
+    sum(positive_eigenvalues)
+
+  pcoa2_variance <- 100 *
+    positive_eigenvalues[2] /
+    sum(positive_eigenvalues)
+
+  # beta_subtitle <- paste0(
+  #   "PERMANOVA: R² = ",
+  #   sprintf("%.3f", platform_r2),
+  #   ", P ",
+  #   format_p_value(platform_p),
+  #   "; PERMDISP: P ",
+  #   format_p_value(dispersion_p)
+  # )
+  
+ 
+
+# beta_subtitle <- paste0(
+#   "PERMANOVA: Tech.rep + Platform\n",
+#   "Platform R² = ", sprintf("%.2f", platform_r2), 
+#       ", P = ", sprintf("%.3f", platform_p), "\n",
+#   "Tech. rep. R² = ", sprintf("%.2f", replicate_r2), 
+#       "; P = ", sprintf("%.3f", barcode_p)
+# )
+  
+
+  beta_div <- ggplot(
+    beta_scores,
+    aes(
+      x = PCo1,
+      y = PCo2
+    )
+  )  +
+  #   annotate(
+  #   "text",
+  #   x = -Inf,
+  #   y = Inf,
+  #   label = beta_subtitle,
+  #   hjust = -0.05,
+  #   vjust = 1.15,
+  #   size = 3,
+  #   lineheight = 0.95
+  # ) +
+    # Connect matched PacBio and ONT PCR replicates
+    # geom_path(
+    #   aes(group = barcode),
+    #   color = "grey65",
+    #   linewidth = 0.55
+    # ) +
+    geom_point(
+      aes(
+        color = basecalling,
+        shape = barcode
+      ),
+      size = 3.3,
+      stroke = 0.8
+    ) +
+    scale_color_manual(
+      values = seq_method_colors
+    ) +
+    guides(
+      color = guide_legend(
+        title = "Sequencing platform",
+        nrow = 1
+      ),
+      shape = "none"
+    ) +
+    labs(
+      x = paste0(
+        "PCo1 [",
+        sprintf("%.1f", pcoa1_variance),
+        "%]"
+      ),
+      y = paste0(
+        "PCo2 [",
+        sprintf("%.1f", pcoa2_variance),
+        "%]"
+      ),
+      title = "C",
+      #subtitle = beta_subtitle
+    ) +
+    theme_marie_clean() +
+    theme(
+      legend.position = "bottom",
+      axis.text.x = element_text(
+        angle = 0,
+        hjust = 0.5
+      ),
+      plot.subtitle = element_text(
+        size = 9,
+        hjust = 0
+      ), 
+      plot.title = element_text(
+        size = 20,
+        hjust = 0
+      )
+    )
+
+  # ---------------------------------------------------------------------------
+  # 11. Supplementary comparison of Bray-Curtis distances
+  # ---------------------------------------------------------------------------
+
+  distance_matrix <- as.matrix(bray_dist)
+
+get_within_platform_distances <- function(platform_name) {
+
+  sample_ids <- beta_metadata %>%
+    filter(basecalling == platform_name) %>%
+    pull(SampleID)
+
+  sample_pairs <- combn(
+    sample_ids,
+    2,
+    simplify = FALSE
+  )
+
+  map_dfr(
+    sample_pairs,
+    function(sample_pair) {
+      tibble(
+        comparison = "Within\nplatforms",
+        platform_type = platform_name,
+        sample_1 = sample_pair[1],
+        sample_2 = sample_pair[2],
+        distance = distance_matrix[sample_pair[1], sample_pair[2]]
+      )
+    }
+  )
+}
+
+matched_distances <- beta_metadata %>%
+  select(SampleID, barcode, basecalling) %>%
+  distinct() %>%
+  pivot_wider(
+    names_from = basecalling,
+    values_from = SampleID
+  ) %>%
+  filter(!is.na(PacBio), !is.na(ONT)) %>%
+  mutate(
+    comparison = "Between\nplatforms",
+    platform_type = "Matched",
+    distance = map2_dbl(
+      PacBio,
+      ONT,
+      function(pacbio_sample, ont_sample) {
+        distance_matrix[pacbio_sample, ont_sample]
+      }
+    )
+  ) %>%
+  select(comparison, platform_type, barcode, distance)
+
+distance_data <- bind_rows(
+  get_within_platform_distances("PacBio"),
+  get_within_platform_distances("ONT"),
+  matched_distances
+) %>%
+  mutate(
+    comparison = factor(
+      comparison,
+      levels = c("Within\nplatforms", "Between\nplatforms")
+    )
+  )
+# 
+#   distance_plot <- ggplot(
+#   distance_data,
+#   aes(x = comparison, y = distance, color = platform_type)
+# ) +
+#   # geom_boxplot(
+#   #   width = 0.55,
+#   #   outlier.shape = NA,
+#   #   fill = "grey94",
+#   #   color = "grey35"
+#   # ) +
+#   geom_point(
+#     width = 0.08,
+#     height = 0,
+#     size = 2.4,
+#     alpha = 0.85
+#   ) +
+#   scale_color_manual(
+#     values = c("PacBio" = "#CC007A", "ONT" = "#0077B6", "Matched" = "black"),
+#     name = NULL
+#   ) +
+#   labs(
+#     x = NULL,
+#     y = "Bray–Curtis dissimilarity",
+#     title = "D"
+#   ) +
+#   theme_marie_clean() +
+#   theme(
+#     axis.text.x = element_text(angle = 0, hjust = 0.5),
+#     legend.position = "none",
+#     plot.title = element_text(
+#         size = 20,
+#         hjust = 0
+#       )
+#   )
+  
+  
+  y_max <- max(distance_data$distance, na.rm = TRUE)
+y_range <- diff(range(distance_data$distance, na.rm = TRUE))
+
+distance_plot <- ggplot(
+  distance_data,
+  aes(x = comparison, y = distance, color = platform_type)
+) +
+  geom_jitter(
+    width = 0.08,
+    height = 0,
+    size = 2.4,
+    alpha = 0.85
+  ) +
+  stat_compare_means(
+    data = distance_data,
+    mapping = aes(x = comparison, y = distance),
+    inherit.aes = FALSE,
+    comparisons = list(
+      c("Within\nplatforms", "Between\nplatforms")
+    ),
+    method = "t.test",
+    method.args = list(var.equal = FALSE),  # Welch's t-test
+    label = "p.signif",
+    label.y = y_max + 0.08 * y_range,
+    tip.length = 0.015,
+    bracket.size = 0.4
+  ) +
+  scale_y_continuous(
+        limits = c(0, y_max * 1.20),
+        expand = expansion(mult = c(0, 0.02))
+      ) +
+  scale_color_manual(
+    values = c(
+      "PacBio" = "#CC007A",
+      "ONT" = "#0077B6",
+      "Matched" = "black"
+    ),
+    name = NULL
+  ) +
+  labs(
+    x = NULL,
+    y = "Bray–Curtis dissimilarity",
+    title = "D"
+  ) +
+  coord_cartesian(
+    ylim = c(NA, y_max + 0.18 * y_range),
+    clip = "off"
+  ) +
+  theme_marie_clean() +
+  theme(
+    axis.text.x = element_text(angle = 0, hjust = 0.5),
+    legend.position = "none",
+    plot.title = element_text(size = 20, hjust = 0)
+  )
+  
+  
+
+  # ---------------------------------------------------------------------------
+  # 12. Combine main figure
+  # ---------------------------------------------------------------------------
+
+  bottom_row <- (beta_div | distance_plot) +
+  plot_layout(widths = c(2, 1))
+
+alpha_patchwork_wid <- alpha_patchwork +
+  plot_layout(widths = c(1, 1, 1))
+
+right_side <- (alpha_patchwork_wid / bottom_row) +
+  plot_layout(heights = c(1, 1))
+
+final_patchwork <- (
+  (hm + labs(title = "A")) | right_side
+) +
+  plot_layout(widths = c(0.37, 1))
+
+
+  
+#  bottom_row <- beta_div | distance_plot + plot_layout(widths = c(2, 1))
+#  alpha_patchwork_wid <- alpha_patchwork + plot_layout(widths = c(1, 1, 1))
+#  # +
+#  # plot_layout(widths = c(1.1, 0.8))
+#
+#right_side <- alpha_patchwork_wid  / bottom_row 
+## +
+##   plot_layout(heights = c(1.3, 1))
+#
+#final_patchwork <- (hm + labs(title = "A")) | right_side
+#
+#final_patchwork <- final_patchwork +
+#  plot_layout(widths = c(0.37, 1)) 
+## +
+#   plot_annotation(tag_levels = "A")
+
+  # ---------------------------------------------------------------------------
+  # 13. Return results
+  # ---------------------------------------------------------------------------
+
+  return(
+    list(
+      amp_obj = amp_obj,
+      alpha_data = amp_alpha_div,
+      alpha_plots = alpha_patchwork,
+      heatmap_data = heatmap_data,
+      heatmap = hm,
+      beta_matrix = beta_matrix,
+      bray_distance = bray_dist,
+      adonis = adonis_results,
+      dispersion_model = dispersion_model,
+      dispersion = dispersion_results,
+      beta_scores = beta_scores,
+      beta = beta_div,
+      distance_data = distance_data,
+      distance_plot = distance_plot,
+      combined = final_patchwork
+    )
+  )
+}
+
+
+
+
+
+```
+
+
+## Fig S7: Correlation in abundance per ASV
+
+```{r}
+
+ 
+combined_amp_long <- function(primer = "V1V8", rarefy_num = 228951){
+# === 1. Load ampvis object ===
+  amp_obj <- read_and_format_to_amp_object(
+    base_dir = base_dir,
+    base_dir2 =  paste0(WD, "/results/"),
+    primerset_name = {{primer}}, #"V1V8",
+    subsample_group = "all_reads",
+    global_ASVs_zymo_all_ref_match = global_ASVs_zymo_all_ref_match %>% filter(!global_asv_id %in% unlist(lenght_df$global_asv_id)),
+    new_barcode = new_barcode,
+    type = "_all"
+  )
+
+  amp_obj <- amp_obj %>% amp_subset_samples(rarefy = {{rarefy_num}}) %>% 
+    amp_subset_taxa(tax_vector = unlist(lenght_df$global_asv_id), remove = T) 
+
+  # === 2. Fix metadata ===
+  amp_obj$metadata <- amp_obj$metadata %>%
+    mutate(
+      type = sub(".*_", "", SampleID),
+      abun_tab = case_when(
+        type == "all" ~ "-otutab",
+        type == "exact" ~ "-search_exact"
+      ),
+      basecalling = factor(basecalling,
+                           levels = c("pacbio", "super"),
+                           labels = c("PacBio", "ONT")), 
+    )
+
+# === 4. LONG DATA ===
+  df_long <- amp_obj %>%
+    amp_subset_samples(normalise = TRUE) %>%
+    amp_export_long()
+  
+}
+
+
+df_long_comp <- 
+  rbind(
+    combined_amp_long(primer = "V1V8", rarefy = 228951),
+    combined_amp_long(primer = "V1V3", rarefy = 24668),
+    combined_amp_long(primer = "V4", rarefy = 7173),
+    combined_amp_long(primer = "OPR", rarefy = 54149)
+    ) %>% 
+  mutate(is_ref = OTU %in%
+             (global_ASVs_zymo_all_ref_match %>%
+                filter(Match_type == "Exact") %>%
+                pull(global_asv_id))) %>% 
+  filter(!OTU %in% unlist(lenght_df$global_asv_id)) 
+
+  # === 5. Compute OTU rank table ===
+  otu_rank_table_PB <- df_long_comp %>%
+    filter(basecalling == "PacBio") %>% 
+    group_by(OTU, primerset, new_barcode, is_ref) %>%
+    summarise(mean_abun_PB = mean(count, na.rm = TRUE)) %>%
+    arrange(desc(mean_abun_PB), OTU) %>%
+    mutate(ASV_rank_PB = row_number())
+
+  
+  otu_rank_table_ONT <- df_long_comp %>%
+    filter(basecalling == "ONT") %>% 
+    group_by(OTU, primerset, new_barcode, is_ref) %>%
+    summarise(mean_abun_ONT = mean(count, na.rm = TRUE)) %>%
+    arrange(desc(mean_abun_ONT), OTU) %>%
+    mutate(ASV_rank_ONT = row_number())
+  
+asv_mean_abundance <- full_join(otu_rank_table_ONT, otu_rank_table_PB) 
+
+# Individual PCR-replicate observations
+replicate_abundance <- full_join(
+  otu_rank_table_ONT,
+  otu_rank_table_PB,
+  by = c("OTU", "primerset", "new_barcode", "is_ref")
+) %>%
+  mutate(
+    mean_abun_ONT = replace_na(mean_abun_ONT, 0),
+    mean_abun_PB  = replace_na(mean_abun_PB, 0),
+    is_ref = factor(
+      is_ref,
+      levels = c(TRUE, FALSE),
+      labels = c("Reference ASV", "Non-reference ASV")
+    ),
+    primerset = factor(primerset, levels = c("V4", "V1V3", "V1V8", "OPR"), 
+                       labels = c("V4", "V1-V3", "V1-V8", "OPR"))
+  )
+
+# Mean across the four PCR replicates
+asv_mean_abundance <- replicate_abundance %>%
+  group_by(primerset, OTU, is_ref) %>%
+  summarise(
+    mean_abun_ONT = mean(mean_abun_ONT, na.rm = TRUE),
+    mean_abun_PB  = mean(mean_abun_PB, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+correlation_results <- asv_mean_abundance %>%
+  group_by(primerset) %>%
+  group_modify(~ {
+    test <- cor.test(
+      .x$mean_abun_ONT,
+      .x$mean_abun_PB,
+      method = "spearman",
+      exact = FALSE
+    )
+
+    tibble(
+      rho = unname(test$estimate),
+      p_value = test$p.value
+    )
+  }) %>%
+  ungroup() %>%
+  mutate(
+    label = paste0(
+      "Spearman's \u03c1 = ", sprintf("%.3f", rho),
+      "\n P", format.pval(
+        p_value,
+        digits = 2,
+        eps = 0.001,
+        prefix = "P "
+      )
+    )
+  )
+
+ggplot() +
+  geom_abline(
+    intercept = 0,
+    slope = 1,
+    linetype = 2,
+    linewidth = 0.6
+  ) +
+
+  # Individual PCR replicates
+  # geom_point(
+  #   data = replicate_abundance,
+  #   aes(
+  #     x = mean_abun_ONT,
+  #     y = mean_abun_PB,
+  #     color = is_ref
+  #   ),
+  #   size = 1.3,
+  #   alpha = 0.20
+  # ) +
+
+  # Mean across PCR replicates
+  geom_point(
+    data = asv_mean_abundance,
+    aes(
+      x = mean_abun_ONT,
+      y = mean_abun_PB,
+      color = is_ref
+    ),
+    size = 2.6,
+    alpha = 0.95
+  ) +
+
+  geom_text(
+    data = correlation_results,
+    aes(
+      x = Inf,
+      y = -Inf,
+      label = label
+    ),
+    inherit.aes = FALSE,
+    hjust = 1.08,
+    vjust = -0.45,
+    size = 4.5
+  ) +
+
+  facet_wrap(
+    ~ primerset,
+    scales = "free"
+  ) +
+
+  scale_color_manual(
+    values = c(
+      "Reference ASV" = "#159A9C",
+      "Non-reference ASV" = "#D66B5D"
+    ),
+    name = NULL
+  ) +
+
+  scale_x_continuous(
+    expand = expansion(mult = c(0.02, 0.05))
+  ) +
+  scale_y_continuous(
+    expand = expansion(mult = c(0.02, 0.05))
+  ) +
+
+  labs(
+    x = "Mean relative abundance, ONT (%)",
+    y = "Mean relative abundance, PacBio (%)"
+  ) +
+
+  guides(
+    color = guide_legend(
+      override.aes = list(
+        alpha = 1,
+        size = 2.5
+      )
+    )
+  ) +
+
+  theme_marie_clean() +
+  theme(
+    axis.text.x = element_text(
+      hjust = 0.5,
+      vjust = 1,
+      angle = 0
+    ),
+    strip.background = element_blank(),
+    strip.text = element_text(face = "bold"),
+    panel.grid.minor = element_blank(),
+    legend.position = "bottom"
+  )
+
+plot_name="Fig_S7_correlation_abundance_zmock"
+plot_folder=folder_dir_supp
+ggsave(paste0(plot_dir ,plot_folder, "/", plot_name, ".svg"), width = 9, height =7 )
+ggsave(paste0(plot_dir ,plot_folder, "/", plot_name, ".png"), width = 9, height =7)
+
+# Correlation between ASV relative abundances obtained using ONT and PacBio sequencing. Small translucent points represent individual technical PCR replicates, whereas larger points represent the mean relative abundance across the four replicates. Colours distinguish ASVs with and without an exact match to the reference sequences. The dashed line represents equal relative abundance between sequencing platforms. Spearman correlations were calculated from the replicate-averaged ASV abundances separately for each primer set.
+
+
+###############
+  
+```
+
 
 
 ### Figure 3: Alpha and betadiversity V1V8
@@ -2647,8 +3955,27 @@ plot_folder=folder_dir_main
 ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".svg"), width = 11, height = 8)
 
 
+res <- run_diversity_pipeline_v2(
+  base_dir,
+  base_dir2 = paste0(WD, "/results/"),
+  primerset_name = "V1V8",
+  subsample_group = "all_reads",
+  global_ASVs_zymo_all_ref_match = global_ASVs_zymo_all_ref_match,
+  new_barcode = new_barcode,
+  type = "_all",
+  rarefy_depth = 228951, 
+  seq_method_colors = c("#CC007A", "#0077B6"),
+  n_permutations = 9999
+)
+res$combined
+plot_name="Fig_3_update"
+plot_folder=folder_dir_main
+ggsave(paste0(plot_dir ,plot_folder, "/", plot_name, ".svg"), width = 13, height = 9)
+ggsave(paste0(plot_dir ,plot_folder, "/", plot_name, ".png"), width = 13, height = 9)
 
 ```
+
+
 
 ### Figure S3: V4:
 
@@ -2670,6 +3997,25 @@ plot_name="Fig_S3_Zmock_diversity_V4"
 plot_folder=folder_dir_supp
 ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".svg"), width = 12, height = 8)
 
+
+
+res <- run_diversity_pipeline_v2(
+  base_dir,
+  base_dir2 = paste0(WD, "/results/"),
+  primerset_name = "V4",
+  subsample_group = "all_reads",
+  global_ASVs_zymo_all_ref_match = global_ASVs_zymo_all_ref_match,
+  new_barcode = new_barcode,
+  type = "_all",
+  rarefy_depth = 7173, 
+  seq_method_colors = c("#CC007A", "#0077B6"),
+  n_permutations = 9999
+)
+res$combined
+plot_name="Fig_S3_update_Zmock_diversity_V4"
+plot_folder=folder_dir_supp
+ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".svg"), width = 12, height = 8)
+ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".png"), width = 12, height = 8)
 
 
 ```
@@ -2695,6 +4041,23 @@ plot_name="Fig_S4_Zmock_diversity_V1V3"
 plot_folder=folder_dir_supp
 ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".svg"), width = 12, height = 8)
 
+res <- run_diversity_pipeline_v2(
+  base_dir,
+  base_dir2 = paste0(WD, "/results/"),
+  primerset_name = "V1V3",
+  subsample_group = "all_reads",
+  global_ASVs_zymo_all_ref_match = global_ASVs_zymo_all_ref_match,
+  new_barcode = new_barcode,
+  type = "_all",
+  rarefy_depth = 24668, 
+  seq_method_colors = c("#CC007A", "#0077B6"),
+  n_permutations = 9999
+)
+res$combined
+plot_name="Fig_S4_update_Zmock_diversity_V1V3"
+plot_folder=folder_dir_supp
+ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".svg"), width = 12, height = 8)
+ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".png"), width = 12, height = 8)
 
 
 ```
@@ -2721,8 +4084,30 @@ plot_folder=folder_dir_supp
 ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".svg"), width = 11, height = 12)
 
 
+res <- run_diversity_pipeline_v2(
+  base_dir,
+  base_dir2 = paste0(WD, "/results/"),
+  primerset_name = "OPR",
+  subsample_group = "all_reads",
+  global_ASVs_zymo_all_ref_match = global_ASVs_zymo_all_ref_match,
+  new_barcode = new_barcode,
+  type = "_all",
+  rarefy_depth = 54149, 
+  seq_method_colors = c("#CC007A", "#0077B6"),
+  n_permutations = 9999
+)
+
+res$combined
+plot_name="Fig_S5_update_Zmock_diversity_OPR"
+plot_folder=folder_dir_supp
+ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".svg"), width = 13, height = 12)
+ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".png"), width = 13, height = 12)
+
 
 ```
+
+
+
 
 # Analysis of complex communities 
 
@@ -2732,8 +4117,11 @@ ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".svg"), width = 11, he
 ## Manually add the "sample_size_5000000","sample_size_2000000" that werenot run initially (not included in git)
 
 # Folder with your *_exact.tsv files
-indir <- "/home/bio.aau.dk/hd95lp/Projects/RETHINK/p_nanopore_amplicon/6_snakemake_usearch_run_all/global_ASVs_Ziels/pacbio_super/new_subsets"
+#indir <- "/home/bio.aau.dk/hd95lp/Projects/RETHINK/p_nanopore_amplicon/6_snakemake_usearch_run_all/global_ASVs_Ziels/pacbio_super/"
+indir <- "/home/bio.aau.dk/hd95lp/Projects/RETHINK/ont-asv-microbial-profiling/postprocessing/results/global_ASVs/"
 
+
+indir <-  "/home/bio.aau.dk/hd95lp/Projects/RETHINK/p_nanopore_amplicon/6_snakemake_usearch_run_all/global_ASVs_Ziels/pacbio_super"
 # Find all exact match files
 files <- list.files(indir, pattern = "_exact.tsv$", full.names = TRUE)
 
@@ -2804,10 +4192,12 @@ included_groups = c(
 )
 
 global_ASVs_combined <- 
-  rbind(global_ASVs_all_load_new_subsets, global_ASVs_all_load) %>% 
+  rbind(#global_ASVs_all_load_new_subsets, 
+        global_ASVs_all_load) %>% 
   filter(sample_content != "Zmock") %>% 
   select(-ASV_ID) %>% 
-  filter(subsampling_group %in% included_groups)
+  filter(subsampling_group %in% included_groups) %>% 
+  filter(!global_asv_id %in% unlist(lenght_df$global_asv_id)) 
   
 global_ASVs_combined 
 
@@ -2907,7 +4297,9 @@ ASV_matches_complete <- shared_ASVs_dub %>%
 
 plot_data <- ASV_matches_complete %>% 
   mutate(basecalling  = factor(basecalling, levels =c("pacbio", "super"), labels = c("Pacbio", "ONT")),
-                  sample_content = factor(sample_content, levels =c("Zmock", "Zfecal", "AD", "WWTP", "Soil")), 
+                  sample_content = factor(sample_content, 
+                                          levels =c("Zmock", "Zfecal", "AD", "WWTP", "Soil"), 
+                                          labels = c("Zmock", "Fecal", "AD", "WWTP", "Soil")), 
          Basecalling_Matchtype = factor(paste0(basecalling, "_",ASV_type),
                                        levels = c(
                                          "ONT_shared", 
@@ -2973,8 +4365,13 @@ plot_complex_cummunities <- function(primerset_val){
     size = 3, 
     shape = 21,
   ) +
-  facet_grid(sample_content~primerset, scales = "free",
+  facet_grid(sample_content~primerset, scales = "free"
              ) +
+    ggh4x::facet_grid2(
+      rows = vars(sample_content),
+      cols = vars(primerset),
+      scales = "free_y"
+    ) +
   scale_x_log10(
    breaks = c(custom_breaks_minimal),#custom_breaks_minimal,
      labels = c(format(custom_breaks_minimal, big.mark = ",", scientific = FALSE))
@@ -3008,7 +4405,7 @@ plot_complex_cummunities(primerset_val = "V4") + theme(strip.text.y = element_bl
   plot_complex_cummunities(primerset_val = "V1-V3") + theme(strip.text.y = element_blank(), axis.title.y = element_blank()) +
 plot_complex_cummunities(primerset_val = "V1-V8") + theme(strip.text.y = element_blank(), axis.title.y = element_blank()) +
 plot_complex_cummunities(primerset_val = "OPR") + theme(axis.title.y = element_blank()) + 
-  plot_layout(ncol = 4, guides = "collect") & theme(legend.position = "bottom")
+  plot_layout(ncol = 4, guides = "collect", axes = "collect_x") & theme(legend.position = "bottom")
 
 
 
@@ -3440,7 +4837,7 @@ PCOA_from_long_df <- function(
 
   pc_df <- as.data.frame(pcoa$points) %>%
     rownames_to_column("SampleID") %>%
-    rename(V1 = "PCoA1", V2 = "PCoA2")
+    dplyr::rename( "PCoA1" = V1, "PCoA2" = V2)
 
   # keep all metadata but DO NOT map to aesthetics
   meta_cols <- data %>%
@@ -3468,7 +4865,7 @@ PCOA_from_long_df <- function(
 
 ```{r, load amp object complex}
 
-
+base_dir = paste0(WD, "/results/global_ASVs/")
 read_sintax_conf80 <- function(file) {
   library(readr)
   library(dplyr)
@@ -3815,7 +5212,8 @@ run_diversity_pipeline <- function(
     left_join(
       global_ASVs_zymo_all_ref_match %>%
         select(global_asv_id, species, copynumber) %>%
-        rename("global_asv_id" = "OTU")
+        rename("OTU" = "global_asv_id")
+        #rename("global_asv_id" = "OTU")
     ) %>%
     group_by(OTU, basecalling, species, copynumber, ASV_rank, is_ref) %>%
     summarise(mean_abun_2 = mean(count), .groups = "drop") %>%
@@ -3935,30 +5333,151 @@ seq_method_colors <- c("PacBio" = "#CC007A", "ONT" = "#0077B6")
 
 make_alpha_plot <- function(df_metric) {
   
-  metric_name <- unique(df_metric$name)
-  
-  # Wilcoxon test per sample_content
-  pvals <- df_metric %>%
-    group_by(sample_content) %>% 
-    # pairwise_wilcox_test(    
-    #   value ~ basecalling,
-    #   paired = TRUE,
-    #   p.adjust.method = "BH"
-    # ) %>%
-    pairwise_t_test(    
-      value ~ basecalling,
-      paired = FALSE,
-      p.adjust.method = "BH"
-    ) %>%
-    add_significance("p.adj") %>%
-      mutate(p.signif = p.adj.signif) %>%   # <-- add this line
-    add_xy_position(
-      x = "basecalling",
-      fun = "max",
-      dodge = 0.6
+#   metric_name <- unique(df_metric$name)
+#   
+#   # Wilcoxon test per sample_content
+#   pvals <- df_metric %>%
+#     group_by(sample_content) %>% 
+#     # pairwise_wilcox_test(    
+#     #   value ~ basecalling,
+#     #   paired = TRUE,
+#     #   p.adjust.method = "BH"
+#     # ) %>%
+#     pairwise_t_test(
+#   value ~ basecalling,
+#   paired = FALSE,
+#   pool.sd = FALSE,
+#   var.equal = FALSE,
+#   p.adjust.method = "BH"
+# ) %>%
+#     add_significance("p.adj") %>%
+#       mutate(p.signif = p.adj.signif) %>%   # <-- add this line
+#     add_xy_position(
+#       x = "basecalling",
+#       fun = "max",
+#       dodge = 0.6
+#     )
+#   
+#   print(pvals)
+   p_to_significance <- function(p) {
+    case_when(
+      is.na(p)  ~ "NA",
+      p <= 1e-4 ~ "****",
+      p <= 1e-3 ~ "***",
+      p <= 1e-2 ~ "**",
+      p <= 0.05 ~ "*",
+      TRUE      ~ "ns"
     )
+  }
+
+  format_p_value <- function(p) {
+    if (is.na(p)) {
+      return("NA")
+    }
+
+    if (p < 0.001) {
+      return("< 0.001")
+    }
+
+    paste0("= ", sprintf("%.3f", p))
+  }
   
-  print(pvals)
+  
+  metric_name <- unique(df_metric$name)
+
+# Positions for significance brackets
+y_positions <- df_metric %>%
+  group_by(sample_content) %>%
+  summarise(
+    y_max = max(value, na.rm = TRUE),
+    y_range = diff(range(value, na.rm = TRUE)),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    y.position = y_max + if_else(
+      y_range > 0,
+      0.08 * y_range,
+      0.08 * pmax(abs(y_max), 1)
+    )
+  )
+
+# Unpaired Welch's t-test within each sample_content
+pvals <- df_metric %>%
+  group_by(sample_content) %>%
+  group_modify(~ {
+
+    test_data <- .x %>%
+      filter(!is.na(value), !is.na(basecalling))
+
+    n_pacbio <- sum(test_data$basecalling == "PacBio")
+    n_ont <- sum(test_data$basecalling == "ONT")
+
+    if (n_pacbio < 2 || n_ont < 2) {
+
+      # Insufficient observations
+      tibble(
+        .y. = "value",
+        group1 = "PacBio",
+        group2 = "ONT",
+        n1 = n_pacbio,
+        n2 = n_ont,
+        p = NA_real_,
+        p.adj = NA_real_
+      )
+
+    } else if (n_distinct(test_data$value) == 1) {
+
+      # Every value across both platforms is identical
+      tibble(
+        .y. = "value",
+        group1 = "PacBio",
+        group2 = "ONT",
+        n1 = n_pacbio,
+        n2 = n_ont,
+        p = 1,
+        p.adj = 1
+      )
+
+    } else {
+
+      # Welch's unpaired t-test
+      tryCatch(
+        {
+          test_data %>%
+            pairwise_t_test(
+              value ~ basecalling,
+              paired = FALSE,
+              pool.sd = FALSE,
+              var.equal = FALSE,
+              p.adjust.method = "BH"
+            ) %>%
+            select(
+              .y., group1, group2,
+              n1, n2, p, p.adj
+            )
+        },
+        error = function(e) {
+          tibble(
+            .y. = "value",
+            group1 = "PacBio",
+            group2 = "ONT",
+            n1 = n_pacbio,
+            n2 = n_ont,
+            p = NA_real_,
+            p.adj = NA_real_
+          )
+        }
+      )
+    }
+  }) %>%
+  ungroup() %>%
+  mutate(
+    p.signif = p_to_significance(p.adj)
+  ) %>%
+  left_join(
+    y_positions %>% select(sample_content, y.position),
+    by = "sample_content"
+  )
   
   ggplot(
     df_metric,
@@ -4000,17 +5519,17 @@ make_alpha_plot <- function(df_metric) {
     theme_marie_clean(bg = "#ECECEC") +
     theme(
       legend.position = "none",
-      strip.text = element_text(face = "bold"),
+      strip.text = element_text(face = "bold", size =13),
       axis.text.x = element_text(angle = 0, hjust = 0.5),
       strip.placement = "outside",
-      axis.title.y = element_text(face = "bold"),
+      axis.title.y = element_text(face = "bold", size =12),
   
        # Only keep the column strips (AD, Soil, WWTP, Zfecal)
      strip.text.y = element_blank(),
      strip.background.y = element_blank(),
   
     # Keep column strips at the top
-      # strip.text.x = element_text(face = "bold", size = 14),
+    #strip.text.x = element_text(face = "bold", size = 13),
     strip.background.x = element_rect(fill = "white")
     ) +
     scale_y_continuous(
@@ -4023,187 +5542,1006 @@ make_alpha_plot <- function(df_metric) {
 ```
 
 
+
 ```{r}
 
-
-fig_4B_ordinations <- function(
-  amp_obj,
-  new_barcode,
-  type = "_all",
+fig_4B_heatmap_bray <- function(
+  amp_objects,
+  new_barcode = NULL,
+  barcode_join_by = "barcode",
+  primer_set,
+  pair_id = "new_barcode",
   rarefy_depth = NULL,
-  seq_method_colors = c("#CC007A", "#0077B6"),
-  test_vec = c("primerset", "new_barcode", "basecalling", "method_primerset")
+  top_n = 30,
+  seq_method_colors = c(
+    "PacBio" = "#CC007A",
+    "ONT" = "#0077B6"
+  ),
+  sample_order = c(
+    "Fecal",
+    "AD",
+    "WWTP",
+    "Soil"
+  ),
+  p_adjust_method = "BH",
+  hide_ns = FALSE
 ) {
+
   library(tidyverse)
   library(ampvis2)
   library(patchwork)
   library(rstatix)
   library(ggpubr)
-  library(forcats)
+  library(vegan)
 
-  # # === 1. Load ampvis object ===
-  # amp_obj <- read_and_format_to_amp_object(
-  #   base_dir = base_dir,
-  #   primerset_name = primerset_name,
-  #   subsample_group = subsample_group,
-  #   global_ASVs_zymo_all_ref_match = global_ASVs_zymo_all_ref_match,
-  #   new_barcode = new_barcode,
-  #   type = type
-  # )
-  # 
-  # # === (optional) rarefy ===
-  # if (!is.null(rarefy_depth)) {
-  #   amp_obj <- amp_obj %>% amp_subset_samples(rarefy = rarefy_depth)
-  # }
-  # 
-  # # === 2. Fix metadata ===
-  amp_obj$metadata <- amp_obj$metadata %>%
-    mutate(
-      type = sub(".*_", "", SampleID),
-      abun_tab = case_when(
-        type == "all" ~ "-otutab",
-        type == "exact" ~ "-search_exact"
-      ),
-      basecalling = factor(basecalling,
-                           levels = c("pacbio", "super"),
-                           labels = c("PacBio", "ONT"))
+  # ------------------------------------------------------
+  # Helper functions
+  # ------------------------------------------------------
+
+  standardise_platform <- function(x) {
+
+    x <- as.character(x)
+
+    x <- case_when(
+      tolower(x) == "pacbio" ~ "PacBio",
+      tolower(x) %in% c("super", "ont") ~ "ONT",
+      TRUE ~ x
     )
-  
 
-  # === 4. LONG DATA ===
-  df_long <- amp_obj %>%
-    amp_subset_samples(normalise = TRUE) %>%
-    amp_export_long()
+    factor(
+      x,
+      levels = c("PacBio", "ONT")
+    )
+  }
 
-  # === 5. Compute OTU rank table ===
-  otu_rank_table <- df_long %>%
-    group_by(OTU) %>%
-    summarise(mean_abun = mean(count, na.rm = TRUE)) %>%
-    arrange(desc(mean_abun), OTU) %>%
-    mutate(ASV_rank = row_number()) %>% 
-    slice_min(ASV_rank, n = 30)
+  standardise_content <- function(x) {
 
-  # === 6. Heatmap ===
-  bin_colors <- c("#FFF5EB", "#F5C9B0", "#EC9E75", "#E2733B", "#D94801")
-  hm_title <- df_long %>% distinct(sample_content) %>% unlist()
+    recode(
+      as.character(x),
+      "Zfecal" = "Fecal"
+    )
+  }
 
-  hm <- df_long %>%
-    inner_join(otu_rank_table, by = "OTU") %>%
-    # mutate(is_ref = OTU %in%
-    #          (global_ASVs_zymo_all_ref_match %>%
-    #             filter(Match_type == "Exact") %>%
-    #             pull(global_asv_id))) %>%
-    # left_join(
-    #   global_ASVs_zymo_all_ref_match %>%
-    #     select(global_asv_id, species, copynumber) %>%
-    #     rename("global_asv_id" = "OTU")
-    # ) %>%
-    group_by(OTU, basecalling, ASV_rank, sample_content) %>%
-    summarise(mean_abun_2 = mean(count), .groups = "drop") %>%
+  # Allow unnamed colour vectors
+  if (is.null(names(seq_method_colors))) {
+
+    if (length(seq_method_colors) != 2) {
+      stop(
+        "`seq_method_colors` must contain two colours."
+      )
+    }
+
+    names(seq_method_colors) <- c(
+      "PacBio",
+      "ONT"
+    )
+  }
+
+  # ------------------------------------------------------
+  # Accept a single ampvis2 object
+  # ------------------------------------------------------
+
+  is_single_amp_object <- all(
+    c("abund", "metadata") %in%
+      names(amp_objects)
+  )
+
+  if (is_single_amp_object) {
+
+    if (
+      !"sample_content" %in%
+        names(amp_objects$metadata)
+    ) {
+      stop(
+        "`amp_obj$metadata` must contain `sample_content`."
+      )
+    }
+
+    content_label <- amp_objects$metadata %>%
+      distinct(sample_content) %>%
+      drop_na() %>%
+      pull(sample_content) %>%
+      standardise_content() %>%
+      unique()
+
+    if (length(content_label) != 1) {
+      stop(
+        paste0(
+          "The supplied ampvis2 object contains multiple ",
+          "sample types. Supply one ampvis2 object per ",
+          "sample type in a named list."
+        )
+      )
+    }
+
+    amp_objects <- setNames(
+      list(amp_objects),
+      content_label
+    )
+  }
+
+  # ------------------------------------------------------
+  # Validate named list
+  # ------------------------------------------------------
+
+  if (
+    !is.list(amp_objects) ||
+      is.null(names(amp_objects)) ||
+      any(names(amp_objects) == "")
+  ) {
+    stop(
+      "`amp_objects` must be a named list of ampvis2 objects."
+    )
+  }
+
+  names(amp_objects) <- standardise_content(
+    names(amp_objects)
+  )
+
+  sample_levels <- c(
+    intersect(
+      sample_order,
+      names(amp_objects)
+    ),
+    setdiff(
+      names(amp_objects),
+      sample_order
+    )
+  )
+
+  # ======================================================
+  # Analyse one sample type independently
+  # ======================================================
+
+  analyse_one <- function(
+    amp_obj,
+    sample_label,
+    barcode_data
+  ) {
+
+    # ----------------------------------------------------
+    # Optional rarefaction
+    # ----------------------------------------------------
+
+    if (!is.null(rarefy_depth)) {
+
+      amp_obj <- amp_obj %>%
+        amp_subset_samples(
+          rarefy = rarefy_depth
+        )
+    }
+
+    # ----------------------------------------------------
+    # Format metadata
+    # ----------------------------------------------------
+
+    amp_obj$metadata <- amp_obj$metadata %>%
+      mutate(
+        basecalling = standardise_platform(
+          basecalling
+        ),
+        sample_content = sample_label
+      )
+
+    # ----------------------------------------------------
+    # Normalized long-format data
+    # ----------------------------------------------------
+
+    df_long <- amp_obj %>%
+      amp_subset_samples(
+        normalise = TRUE
+      ) %>%
+      amp_export_long() %>%
+      as_tibble() %>%
+      mutate(
+        basecalling = standardise_platform(
+          basecalling
+        ),
+        sample_content = sample_label
+      )
+
+    # ----------------------------------------------------
+    # Add the technical-replicate pairing ID
+    # ----------------------------------------------------
+
+    if (!pair_id %in% names(df_long)) {
+
+      if (is.null(barcode_data)) {
+        stop(
+          paste0(
+            "`", pair_id,
+            "` is not present in the metadata and ",
+            "no `new_barcode` table was supplied."
+          )
+        )
+      }
+
+      if (
+        !all(
+          barcode_join_by %in%
+            names(df_long)
+        ) ||
+          !all(
+            barcode_join_by %in%
+              names(barcode_data)
+          )
+      ) {
+        stop(
+          paste0(
+            "The join column(s) were not found in both ",
+            "`df_long` and `new_barcode`: ",
+            paste(
+              barcode_join_by,
+              collapse = ", "
+            )
+          )
+        )
+      }
+
+      df_long <- df_long %>%
+        left_join(
+          barcode_data,
+          by = barcode_join_by
+        )
+    }
+
+    missing_pair_ids <- df_long %>%
+      filter(
+        is.na(.data[[pair_id]])
+      ) %>%
+      distinct(SampleID)
+
+    if (nrow(missing_pair_ids) > 0) {
+      stop(
+        paste0(
+          nrow(missing_pair_ids),
+          " samples in ",
+          sample_label,
+          " could not be assigned a `",
+          pair_id,
+          "`. Check `barcode_join_by`."
+        )
+      )
+    }
+
+    # ====================================================
+    # Heatmap data
+    # ====================================================
+
+    otu_rank_table <- df_long %>%
+      group_by(OTU) %>%
+      summarise(
+        overall_mean_abundance = mean(
+          count,
+          na.rm = TRUE
+        ),
+        .groups = "drop"
+      ) %>%
+      arrange(
+        desc(overall_mean_abundance),
+        OTU
+      ) %>%
+      slice_head(n = top_n) %>%
+      mutate(
+        ASV_rank = row_number()
+      )
+
+    heatmap_data <- df_long %>%
+      semi_join(
+        otu_rank_table,
+        by = "OTU"
+      ) %>%
+      group_by(
+        OTU,
+        basecalling
+      ) %>%
+      summarise(
+        mean_abundance = mean(
+          count,
+          na.rm = TRUE
+        ),
+        .groups = "drop"
+      ) %>%
+      mutate(
+        basecalling = as.character(
+          basecalling
+        )
+      ) %>%
+      complete(
+        OTU,
+        basecalling = c(
+          "PacBio",
+          "ONT"
+        ),
+        fill = list(
+          mean_abundance = 0
+        )
+      ) %>%
+      left_join(
+        otu_rank_table %>%
+          select(
+            OTU,
+            ASV_rank
+          ),
+        by = "OTU"
+      ) %>%
+      mutate(
+        basecalling = factor(
+          basecalling,
+          levels = c(
+            "PacBio",
+            "ONT"
+          )
+        ),
+        sample_content = sample_label
+      )
+
+    # ====================================================
+    # Pairwise Bray–Curtis distances
+    # ====================================================
+
+    abundance_wide <- df_long %>%
+      group_by(
+        SampleID,
+        OTU
+      ) %>%
+      summarise(
+        abundance = sum(count),
+        .groups = "drop"
+      ) %>%
+      pivot_wider(
+        names_from = OTU,
+        values_from = abundance,
+        values_fill = 0
+      )
+
+    abundance_matrix <- abundance_wide %>%
+      column_to_rownames("SampleID") %>%
+      as.matrix()
+
+    # Remove samples containing no abundance
+    abundance_matrix <- abundance_matrix[
+      rowSums(abundance_matrix) > 0,
+      ,
+      drop = FALSE
+    ]
+
+    sample_metadata <- df_long %>%
+      transmute(
+        SampleID,
+        basecalling,
+        pair_id = as.character(
+          .data[[pair_id]]
+        )
+      ) %>%
+      distinct() %>%
+      filter(
+        SampleID %in%
+          rownames(abundance_matrix)
+      )
+
+    # Each SampleID must have one platform and one pair ID
+    duplicated_metadata <- sample_metadata %>%
+      count(SampleID) %>%
+      filter(n > 1)
+
+    if (nrow(duplicated_metadata) > 0) {
+      stop(
+        paste0(
+          "Some SampleIDs in ",
+          sample_label,
+          " have multiple platform or pair-ID assignments."
+        )
+      )
+    }
+
+    if (nrow(abundance_matrix) < 2) {
+
+      distance_data <- tibble(
+        sample_1 = character(),
+        sample_2 = character(),
+        pair_id = character(),
+        comparison_type = character(),
+        point_group = character(),
+        bray_curtis = double(),
+        sample_content = character()
+      )
+
+    } else {
+
+      bray_matrix <- abundance_matrix %>%
+        vegan::vegdist(
+          method = "bray"
+        ) %>%
+        as.matrix()
+
+      sample_ids <- rownames(
+        bray_matrix
+      )
+
+      sample_pairs <- combn(
+        sample_ids,
+        2,
+        simplify = FALSE
+      )
+
+      distance_data <- map_dfr(
+  sample_pairs,
+  \(sample_pair) {
+
+    sample_1 <- sample_pair[1]
+    sample_2 <- sample_pair[2]
+
+    metadata_1 <- sample_metadata %>%
+      filter(SampleID == sample_1)
+
+    metadata_2 <- sample_metadata %>%
+      filter(SampleID == sample_2)
+
+    if (
+      nrow(metadata_1) != 1 ||
+        nrow(metadata_2) != 1
+    ) {
+      return(NULL)
+    }
+
+    platform_1 <- as.character(
+      metadata_1$basecalling
+    )
+
+    platform_2 <- as.character(
+      metadata_2$basecalling
+    )
+
+    replicate_1 <- metadata_1$pair_id
+    replicate_2 <- metadata_2$pair_id
+
+    same_platform <- (
+      platform_1 == platform_2
+    )
+
+    same_replicate <- (
+      replicate_1 == replicate_2
+    )
+
+    # Retain:
+    # 1. all comparisons among technical replicates
+    #    within the same platform;
+    # 2. matched replicates between PacBio and ONT.
+    #
+    # Exclude unmatched comparisons between platforms.
+    if (
+      !same_platform &&
+        !same_replicate
+    ) {
+      return(NULL)
+    }
+
+    comparison_type <- if (
+      same_platform
+    ) {
+      "Within platforms"
+    } else {
+      "Between platforms"
+    }
+
+    point_group <- if (
+      same_platform
+    ) {
+      platform_1
+    } else {
+      "Between platforms"
+    }
+
+    tibble(
+      sample_1 = sample_1,
+      sample_2 = sample_2,
+
+      replicate_1 = replicate_1,
+      replicate_2 = replicate_2,
+
+      pair_id = if (
+        same_replicate
+      ) {
+        replicate_1
+      } else {
+        paste0(
+          replicate_1,
+          "–",
+          replicate_2
+        )
+      },
+
+      comparison_type = comparison_type,
+      point_group = point_group,
+
+      bray_curtis = bray_matrix[
+        sample_1,
+        sample_2
+      ],
+
+      sample_content = sample_label
+    )
+  }
+)
+      
+      
+      
+      
+      
+      
+    }
+
+    list(
+      heatmap_data = heatmap_data,
+      distance_data = distance_data
+    )
+  }
+
+  # ======================================================
+  # Run each sample type independently
+  # ======================================================
+
+  individual_results <- imap(
+    amp_objects,
+    \(amp_obj, sample_label) {
+
+      barcode_data <- if (
+        is.list(new_barcode) &&
+          !is.data.frame(new_barcode)
+      ) {
+        new_barcode[[sample_label]]
+      } else {
+        new_barcode
+      }
+
+      analyse_one(
+        amp_obj = amp_obj,
+        sample_label = sample_label,
+        barcode_data = barcode_data
+      )
+    }
+  )
+
+  # ======================================================
+  # Combined heatmap
+  # ======================================================
+
+  heatmap_data <- map_dfr(
+    individual_results,
+    "heatmap_data"
+  ) %>%
     mutate(
-      OTU_clean = paste0(ASV_rank),
-      OTU_label = OTU_clean,
-      mean_abun_2 = if_else(mean_abun_2 == 0, NA, mean_abun_2)
-    ) %>%
-    arrange(desc(ASV_rank)) %>% 
-    mutate(OTU_label = fct_inorder(OTU_label)) %>% 
-    ggplot(aes(x = basecalling, y = OTU_label, fill = mean_abun_2)) +
-    geom_tile(color = "white", linewidth = 0.3) +
-    geom_text(aes(label = if_else(mean_abun_2 == 0, "-", sprintf("%.2f", mean_abun_2))), size = 3.5) +
-    facet_grid(~sample_content) + 
-    scale_fill_gradientn(colours = bin_colors, na.value = "grey90") +
-    labs(x = NULL, y = NULL, fill = "Relative\nabundance (%)") +
-    scale_y_discrete(expand = c(0, 0)) +
-    scale_x_discrete(expand = c(0, 0)) +
+      sample_content = factor(
+        sample_content,
+        levels = sample_levels
+      ),
+
+      ASV_rank = factor(
+        ASV_rank,
+        levels = rev(
+          seq_len(top_n)
+        )
+      ),
+
+      fill_abundance = na_if(
+        mean_abundance,
+        0
+      ),
+
+      abundance_label = if_else(
+        mean_abundance == 0,
+        "–",
+        sprintf(
+          "%.2f",
+          mean_abundance
+        )
+      )
+    )
+
+  bin_colors <- c(
+    "#FFF5EB",
+    "#F5C9B0",
+    "#EC9E75",
+    "#E2733B",
+    "#D94801"
+  )
+
+  heatmap_plot <- ggplot(
+    heatmap_data,
+    aes(
+      x = basecalling,
+      y = ASV_rank,
+      fill = fill_abundance
+    )
+  ) +
+    geom_tile(
+      color = "white",
+      linewidth = 0.4
+    ) +
+    geom_text(
+      aes(label = abundance_label),
+      size = 3.2
+    ) +
+    facet_grid(
+      cols = vars(sample_content),
+      scales = "free_x",
+      space = "free_x"
+    ) +
+    scale_fill_gradientn(
+      colours = bin_colors,
+      na.value = "grey90"
+    ) +
+    scale_x_discrete(
+      expand = c(0, 0)
+    ) +
+    scale_y_discrete(
+      expand = c(0, 0),
+      drop = FALSE
+    ) +
+    labs(
+      x = NULL,
+      y = "ASV rank",
+      fill = "Relative\nabundance (%)"
+    ) +
     theme_minimal(base_size = 12) +
     theme(
-      axis.text.y = element_text(size = 12, color = "black"),
-      strip.text.x = element_text(hjust = 0.5, face = "bold", size = 15, color = "black"),
-      axis.text.x = element_text(size = 12, , color = "black"),
-      axis.ticks.x = element_line(color = "black"),
-      panel.grid = element_blank(),
-      legend.position = "none"
+       strip.background = element_blank(),
+
+  strip.text.x = element_text(
+    size = 13,
+    face = "bold",
+    color = "black",
+    margin = margin(
+      b = 7
+    )
+  ),
+strip.text.y = element_text(
+    size = 13,
+    face = "bold",
+    color = "black",
+    margin = margin(
+      b = 7
+    )
+  ),
+# Keep only the left y-axis line
+  axis.line.y.left = element_line(
+    color = "black",
+    linewidth = 0.5
+  ),
+
+  # Add tick marks to the left y-axis
+  axis.ticks.y.left = element_line(
+    color = "black",
+    linewidth = 0.5
+  ),
+ axis.ticks.length.y.left = grid::unit(
+    3,
+    "pt"
+  ),
+  # Match axis styling
+  axis.title.y = element_text(
+    size = 12,
+    face = "bold",
+    color = "black",
+    margin = margin(
+      r = 8
+    )
+  ),
+
+  axis.text.y = element_text(
+    size = 10,
+    color = "black"
+  ),
+
+  axis.text.x = element_text(
+    size = 11,
+    color = "black",
+    margin = margin(
+      t = 5
+    )
+  ),
+
+  axis.ticks = element_line(
+    color = "black",
+    linewidth = 0.4
+  ),
+
+  axis.ticks.length = grid::unit(
+    2,
+    "pt"
+  ),
+
+  panel.spacing.x = grid::unit(
+    0.20,
+    "cm"
+  ),
+axis.line.x.bottom = element_line(
+  color = "black",
+  linewidth = 0.4
+),
+
+axis.ticks.x.bottom = element_line(
+  color = "black",
+  linewidth = 0.5
+),
+
+axis.ticks.length.x.bottom = grid::unit(
+  3,
+  "pt"
+),
+  legend.position = "none",
     )
 
-  # === 7. Beta diversity (Bray) ===
-  beta_div <- amp_obj %>%
-    amp_ordinate(
-      sample_color_by = "basecalling",
-      sample_shape_by = "barcode",
-      transform = "none", 
-      type = "PCOA",
-      distmeasure = "bray",
-      filter_species = 0.1,
-      sample_label_size = 0
+  # ======================================================
+  # Combined Bray–Curtis data
+  # ======================================================
+
+  distance_data <- map_dfr(
+    individual_results,
+    "distance_data"
+  ) %>%
+    mutate(
+      sample_content = factor(
+        sample_content,
+        levels = sample_levels
+      ),
+
+      comparison_type = factor(
+        comparison_type,
+        levels = c(
+          "Within platforms",
+          "Between platforms"
+        )
+      ),
+
+      point_group = factor(
+        point_group,
+        levels = c(
+          "PacBio",
+          "ONT",
+          "Between platforms"
+        )
+      )
+    )
+
+  # Require at least two observations in both groups
+  eligible_sample_types <- distance_data %>%
+    count(
+      sample_content,
+      comparison_type
+    ) %>%
+    filter(n >= 2) %>%
+    count(
+      sample_content,
+      name = "n_groups"
+    ) %>%
+    filter(n_groups == 2) %>%
+    pull(sample_content)
+
+  test_data <- distance_data %>%
+    filter(
+      sample_content %in%
+        eligible_sample_types
+    )
+
+  # ======================================================
+  # Welch tests within each sample type
+  # ======================================================
+
+  if (length(eligible_sample_types) > 0) {
+
+    distance_tests <- test_data %>%
+      group_by(sample_content) %>%
+      t_test(
+        bray_curtis ~ comparison_type,
+        paired = FALSE,
+        var.equal = FALSE
+      ) %>%
+      ungroup() %>%
+      adjust_pvalue(
+        method = p_adjust_method
+      ) %>%
+      add_significance("p.adj")
+
+    y_positions <- distance_data %>%
+      group_by(sample_content) %>%
+      summarise(
+        y.position =
+          max(
+            bray_curtis,
+            na.rm = TRUE
+          ) *
+          1.12 +
+          0.002,
+        .groups = "drop"
+      )
+
+    distance_tests <- distance_tests %>%
+      left_join(
+        y_positions,
+        by = "sample_content"
+      )
+
+  } else {
+
+    distance_tests <- tibble()
+  }
+
+  # ======================================================
+  # Bray–Curtis jitter plot
+  # ======================================================
+
+  point_colors <- c(
+    "PacBio" =
+      unname(
+        seq_method_colors["PacBio"]
+      ),
+
+    "ONT" =
+      unname(
+        seq_method_colors["ONT"]
+      ),
+
+    "Between platforms" = "black"
+  )
+
+  distance_plot <- ggplot(
+    distance_data %>% mutate(primer = primer_set),
+    aes(
+      x = comparison_type,
+      y = bray_curtis,
+      color = point_group
+    )
+  ) +
+    geom_jitter(
+      width = 0.10,
+      height = 0,
+      size = 2.7,
+      alpha = 0.9
     ) +
-    geom_point(size = 3.3, stroke = 0.8) +
-    scale_color_manual(values = seq_method_colors) +
-    guides(color = guide_legend(title = "Sequencing platform", nrow = 1),
-           shape = "none") +
+    facet_grid(
+      cols = vars(sample_content),
+      rows = vars(primer),
+      scales = "free_y"
+    ) +
+    scale_color_manual(
+      values = point_colors,
+      name = NULL
+    ) +
+    scale_x_discrete(
+      labels = c(
+        "Within platforms" =
+          "Within\nplatforms",
+        "Between platforms" =
+          "Between\nplatforms"
+      )
+    ) +
+    scale_y_continuous(
+      limits = c(0, NA),
+      expand = expansion(
+        mult = c(0.02, 0.20)
+      )
+    ) +
+    labs(
+      x = NULL,
+      y = "Bray–Curtis dissimilarity"
+    ) +
     theme_marie_clean() +
-    theme(legend.position = "bottom", 
-          axis.text.x = element_text(angle = 0, hjust = 0.5))
-  
-  df_long_ <- df_long %>% as_tibble() %>% 
-      group_by(SampleID) %>% 
-      mutate(mapped_reads = sum(count)) %>% ungroup() %>% 
-      group_by(SampleID, OTU) %>% 
-      mutate(rel_abun_ASV = sum(count)) %>% ungroup() %>% 
-      group_by(SampleID, Species) %>% 
-      mutate(rel_abun_species = sum(rel_abun_ASV)) %>% ungroup() %>% 
-      group_by(SampleID, Genus) %>% 
-      mutate(rel_abun_genus = sum(rel_abun_ASV)) %>% ungroup() %>%
-      group_by(SampleID, Family) %>% mutate(rel_abun_family = sum(rel_abun_ASV)) %>% ungroup() %>% 
-      # nest(samples = c(OTU, mapped_reads, count, Genus, Species,
-      #                  rel_abun_ASV, rel_abun_species, rel_abun_genus)) %>% 
-      left_join(new_barcode) %>% 
-      mutate(method_primerset = paste0(basecalling, ";",primerset), 
-             basecalling_new_barcode = paste0(basecalling, ";", new_barcode), 
-             )
-  
-  adonis_results <- ADONIS_from_long_df(
-    data = df_long_,
-    tax_level = "OTU", 
-    abun_limit = 0.1,
-    test_varibles = test_vec
-)
-  print(adonis_results)
-  
-  #  # === 7. Beta diversity (Bray) ===
-  # beta_div_pa <- amp_obj %>%
-  #   amp_ordinate(
-  #     sample_color_by = "basecalling",
-  #     sample_shape_by = "barcode",
-  #     transform = "pa",
-  #     type = "PCOA",
-  #     distmeasure = "jaccard",
-  #     filter_species = 0.1,
-  #     sample_label_size = 0
-  #   ) +
-  #   geom_point(size = 3.3, stroke = 0.8) +
-  #   scale_color_manual(values = seq_method_colors) +
-  #   guides(color = guide_legend(title = "Sequencing method", nrow = 1),
-  #          shape = "none") +
-  #   theme_marie_clean() +
-  #   theme(legend.position = "bottom", 
-  #         axis.text.x = element_text(angle = 0, hjust = 0.5))
+    theme(
+     # Match the facet headings
+  strip.background = element_blank(),
 
-  
-  # === 8. Combine ===
-  # right_side <- alpha_patchwork / beta_div + plot_layout(heights = c(1.3, 1))
-  # final_patchwork <- hm | right_side
-  # final_patchwork <- final_patchwork + plot_layout(widths = c(0.4, 1))
+  strip.text.x = element_text(
+    size = 13,
+    face = "bold",
+    color = "black",
+    margin = margin(
+      b = 7
+    )
+  ),
+strip.text.y = element_text(
+    size = 13,
+    face = "bold",
+    color = "black",
+    margin = margin(
+      b = 7
+    )
+  ),
+  # Match axis styling
+  axis.title.y = element_text(
+    size = 12,
+    face = "bold",
+    color = "black",
+    margin = margin(
+      r = 8
+    )
+  ),
 
-  
-  return(list(
-    #amp_obj = amp_obj,
-    #alpha_plots = alpha_patchwork,
-    heatmap = hm,
-    beta = beta_div,
-    adonis = adonis_results
-    #beta_pa = beta_div_pa
-  ))
+  axis.text.y = element_text(
+    size = 10,
+    color = "black"
+  ),
+
+  axis.text.x = element_text(
+    size = 11,
+    color = "black",
+    margin = margin(
+      t = 5
+    )
+  ),
+
+  axis.ticks = element_line(
+    color = "black",
+    linewidth = 0.4
+  ),
+
+  axis.ticks.length = grid::unit(
+    2,
+    "pt"
+  ),
+
+  panel.spacing.x = grid::unit(
+    0.20,
+    "cm"
+  ),
+axis.line.x.bottom = element_line(
+  color = "black",
+  linewidth = 0.4
+),
+
+axis.ticks.x.bottom = element_line(
+  color = "black",
+  linewidth = 0.5
+),
+
+axis.ticks.length.x.bottom = grid::unit(
+  3,
+  "pt"
+),
+  legend.position = "none",
+
+  plot.margin = margin(
+    5.5,
+    5.5,
+    5.5,
+    5.5
+  ),
+    )
+
+  if (nrow(distance_tests) > 0) {
+
+    distance_plot <- distance_plot +
+      stat_pvalue_manual(
+        distance_tests,
+        label = "p.adj.signif",
+        hide.ns = hide_ns,
+        tip.length = 0.01
+      )
+  }
+
+  # ======================================================
+  # Combined figure
+  # ======================================================
+
+  combined_plot <- heatmap_plot /
+    distance_plot +
+    plot_layout(
+      heights = c(2.2, 1)
+    )
+
+  return(
+    list(
+      heatmap = heatmap_plot,
+      distance_plot = distance_plot,
+      distance_tests = distance_tests,
+      distance_data = distance_data,
+      combined = combined_plot,
+      individual_results = individual_results
+    )
+  )
 }
+
 
 
 
@@ -4215,8 +6553,6 @@ fig_4B_ordinations <- function(
 
 ```{r}
 samples <- unique(global_ASVs_all_load$sample_content)[c(2, 3,5,1)]
-
-
 
 amp_V1V8_merge <- merge_ampvis_samples(
   sample_contents = samples,
@@ -4242,8 +6578,34 @@ amp_V1V8_merge$metadata <- amp_V1V8_merge$metadata %>%
       basecalling,
       levels = c("pacbio", "super"),
       labels = c("PacBio", "ONT")),
-  sample_content = factor(sample_content, levels =c("Zmock", "Zfecal", "AD", "WWTP", "Soil")), 
+  sample_content = factor(sample_content, levels =c("Zmock", "Zfecal", "AD", "WWTP", "Soil"), 
+                          labels = c("Zmock", "Fecal", "AD", "WWTP", "Soil")
+                          ), 
     )
+
+
+
+
+
+amp_objects <- list(
+  Fecal = amp_V1V8_merge %>% amp_subset_samples(sample_content == "Fecal"),
+  AD    = amp_V1V8_merge %>% amp_subset_samples(sample_content == "AD"),
+  WWTP  = amp_V1V8_merge %>% amp_subset_samples(sample_content == "WWTP"),
+  Soil  = amp_V1V8_merge %>% amp_subset_samples(sample_content == "Soil")
+)
+
+fig_4B <- fig_4B_heatmap_bray(
+  amp_objects = amp_objects,
+  primer = "V1-V8",
+  new_barcode = new_barcode,
+  barcode_join_by = "barcode",
+  pair_id = "new_barcode"
+)
+
+fig_4B$heatmap
+
+fig_4B$distance_plot
+
 ```
 
 
@@ -4285,10 +6647,12 @@ final_plot_V1V8_A[[3]] <- final_plot_V1V8_A[[3]] + theme(strip.text.x = element_
 final_plot_V1V8_A[[2]] <- final_plot_V1V8_A[[2]] + theme(strip.text.x = element_blank()) #, axis.title.y = element_blank(),)
 
 
-final_plot_V1V8_A
 
 
 ```
+
+
+
 
 #### Fig 5B: Heatmap  
 
@@ -4392,7 +6756,11 @@ fig_4B_v2 <- zfecal +
 
 ```{r}
 
-final_plot_V1V8_A | fig_4B_v2 + 
+
+final_plot_V1V8_A | fig_4B$heatmap
+
+
+final_plot_V1V8_A | fig_4B$heatmap + 
   plot_annotation(tag_levels = "A") + 
   plot_layout(#widths = c(1,0.7)
               )
@@ -4463,9 +6831,14 @@ soil <- fig_4B_ordinations(
 #                     alpha = 0.2, linewidth = 0
 #                     )
 
-ordination_V1V8 <- zfecal + AD + WWTP + soil + 
-  plot_layout(ncol = 1, widths = c(1), heights = c(1,1,1,1), guides = "collect") & theme(legend.position = "bottom")
+# ordination_V1V8 <- zfecal + AD + WWTP + soil + 
+#   plot_layout(ncol = 1, widths = c(1), heights = c(1,1,1,1), guides = "collect") & theme(legend.position = "bottom")
 
+ordination_V1V8 <- zfecal + labs(title = "V1-V8") +
+  AD + WWTP + soil + 
+  plot_layout(ncol = 1, widths = c(1), heights = c(1,1,1,1), guides = "collect") &
+  theme(legend.position = "none", legend.text = element_blank(),
+        plot.title = element_text(size = 16, face = "bold")) 
 
 
 ```
@@ -4488,7 +6861,7 @@ amp_V4_merge <- merge_ampvis_samples(
   new_barcode = new_barcode
 ) %>% 
   amp_subset_samples(minreads = 5) %>% 
-  amp_rarefy(rarefy = 5126)
+  amp_rarefy(rarefy = 5126) 
 
 amp_V4_merge$metadata <- amp_V4_merge$metadata %>% 
    mutate(
@@ -4500,9 +6873,30 @@ amp_V4_merge$metadata <- amp_V4_merge$metadata %>%
       basecalling,
       levels = c("pacbio", "super"),
       labels = c("PacBio", "ONT")),
-        sample_content = factor(sample_content, levels =c("Zmock", "Zfecal", "AD", "WWTP", "Soil")), 
+        sample_content = factor(sample_content, levels =c("Zmock", "Zfecal", "AD", "WWTP", "Soil"),
+                                labels =c("Zmock", "Fecal", "AD", "WWTP", "Soil")), 
     
     )
+
+
+amp_objects <- list(
+  Fecal = amp_V4_merge %>% amp_subset_samples(sample_content == "Fecal"),
+  AD    = amp_V4_merge %>% amp_subset_samples(sample_content == "AD"),
+  WWTP  = amp_V4_merge %>% amp_subset_samples(sample_content == "WWTP"),
+  Soil  = amp_V4_merge %>% amp_subset_samples(sample_content == "Soil")
+)
+
+fig_4B_V4 <- fig_4B_heatmap_bray(
+  amp_objects = amp_objects,
+  primer = "V4",
+  new_barcode = new_barcode,
+  barcode_join_by = "barcode",
+  pair_id = "new_barcode"
+)
+
+fig_4B_V4$heatmap
+
+fig_4B_V4$distance_plot
 
 
 ```
@@ -4657,12 +7051,12 @@ fig_4B_v2 <- zfecal +
 
 ```{r}
 
-final_plot_V1V8_A | fig_4B_v2 + 
+final_plot_V1V8_A | fig_4B_V4$heatmap + 
   plot_annotation(tag_levels = "A") + 
   plot_layout(#widths = c(1,0.7)
               )
 
-plot_name="Fig_S8_Alpha_diversity_V4"
+plot_name="Fig_S12_Alpha_diversity_V4"
 plot_folder=folder_dir_supp
 #ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".png"), width = 12, height = 7)
 ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".svg"), width = 12, height = 7, limitsize = F)
@@ -4727,10 +7121,23 @@ soil <- fig_4B_ordinations(
 #                     alpha = 0.2, linewidth = 0
 #                     )
 
-ordination_V4 <- zfecal + AD + WWTP + soil + 
-  plot_layout(ncol = 1, widths = c(1), heights = c(1,1,1,1), guides = "collect") & theme(legend.position = "bottom")
+# ordination_V4 <- zfecal + AD + WWTP + soil + 
+#   plot_layout(ncol = 1, widths = c(1), heights = c(1,1,1,1), guides = "collect") & theme(legend.position = "bottom")
+ordination_V4 <- zfecal + labs(title = "V4") +
+  AD + WWTP + soil + 
+  plot_layout(ncol = 1, widths = c(1), heights = c(1,1,1,1), guides = "collect") & 
+  theme(legend.position = "none", plot.title = element_text(size = 16, face = "bold"))
 
 
+    
+############    
+    
+    
+    
+    
+
+    
+    
 
 ```
 
@@ -4765,8 +7172,29 @@ amp_V1V3_merge$metadata <- amp_V1V3_merge$metadata %>%
       basecalling,
       levels = c("pacbio", "super"),
       labels = c("PacBio", "ONT")),
-        sample_content = factor(sample_content, levels =c("Zmock", "Zfecal", "AD", "WWTP", "Soil")), 
+      sample_content = factor(sample_content, levels =c("Zmock", "Zfecal", "AD", "WWTP", "Soil"),
+                                labels =c("Zmock", "Fecal", "AD", "WWTP", "Soil"))
     )
+
+
+amp_objects <- list(
+  Fecal = amp_V1V3_merge %>% amp_subset_samples(sample_content == "Fecal"),
+  AD    = amp_V1V3_merge %>% amp_subset_samples(sample_content == "AD"),
+  WWTP  = amp_V1V3_merge %>% amp_subset_samples(sample_content == "WWTP"),
+  Soil  = amp_V1V3_merge %>% amp_subset_samples(sample_content == "Soil")
+)
+
+fig_4B_V1V3 <- fig_4B_heatmap_bray(
+  amp_objects = amp_objects,
+  primer = "V1-V3",
+  new_barcode = new_barcode,
+  barcode_join_by = "barcode",
+  pair_id = "new_barcode"
+)
+
+fig_4B_V1V3$heatmap
+
+fig_4B_V1V3$distance_plot
 
 ```
 
@@ -4917,12 +7345,12 @@ fig_4B_v2
 
 ```{r}
 
-final_plot_V1V8_A | fig_4B_v2 + 
+final_plot_V1V8_A | fig_4B_V1V3$heatmap + 
   plot_annotation(tag_levels = "A") + 
   plot_layout(#widths = c(1,0.7)
               )
 
-plot_name="Fig_S9_Alpha_diversity_V1V3"
+plot_name="Fig_S13_Alpha_diversity_V1V3"
 plot_folder=folder_dir_supp
 #ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".png"), width = 12, height = 7)
 
@@ -4990,8 +7418,14 @@ soil <- fig_4B_ordinations(
 #                     alpha = 0.2, linewidth = 0
 #                     )
 
-ordination_V1V3 <- zfecal + AD + WWTP + soil + 
-  plot_layout(ncol = 1, widths = c(1), heights = c(1,1,1,1), guides = "collect") & theme(legend.position = "bottom")
+# ordination_V1V3 <- zfecal + AD + WWTP + soil + 
+#   plot_layout(ncol = 1, widths = c(1), heights = c(1,1,1,1), guides = "collect") & theme(legend.position = "bottom")
+
+
+ordination_V1V3 <- zfecal + labs(title = "V1-V3") +
+  AD + WWTP + soil + 
+  plot_layout(ncol = 1, widths = c(1), heights = c(1,1,1,1), guides = "collect") & 
+  theme(legend.position = "none", plot.title = element_text(size = 16, face = "bold"))
 
 
 
@@ -5027,9 +7461,30 @@ amp_OPR_merge$metadata <- amp_OPR_merge$metadata %>%
       basecalling,
       levels = c("pacbio", "super"),
       labels = c("PacBio", "ONT")), 
-        sample_content = factor(sample_content, levels =c("Zmock", "Zfecal", "AD", "WWTP", "Soil")), 
+      sample_content = factor(sample_content, levels =c("Zmock", "Zfecal", "AD", "WWTP", "Soil"),
+                                labels =c("Zmock", "Fecal", "AD", "WWTP", "Soil")), 
+    
     )
 
+
+amp_objects <- list(
+  Fecal = amp_OPR_merge %>% amp_subset_samples(sample_content == "Fecal"),
+  AD    = amp_OPR_merge %>% amp_subset_samples(sample_content == "AD"),
+  WWTP  = amp_OPR_merge %>% amp_subset_samples(sample_content == "WWTP"),
+  Soil  = amp_OPR_merge %>% amp_subset_samples(sample_content == "Soil")
+)
+
+fig_4B_OPR <- fig_4B_heatmap_bray(
+  amp_objects = amp_objects,
+  primer = "OPR",
+  new_barcode = new_barcode,
+  barcode_join_by = "barcode",
+  pair_id = "new_barcode"
+)
+
+fig_4B_OPR$heatmap
+
+fig_4B_OPR$distance_plot
 
 
 ```
@@ -5181,17 +7636,19 @@ fig_4B_v2
 
 ```{r}
 
-final_plot_V1V8_A | fig_4B_v2 + 
+final_plot_V1V8_A | fig_4B_OPR$heatmap + 
   plot_annotation(tag_levels = "A") + 
   plot_layout(#widths = c(1,0.7)
               )
 
-plot_name="Fig_S10_Alpha_diversity_OPR"
+plot_name="Fig_S14_Alpha_diversity_OPR"
 plot_folder=folder_dir_supp
 #ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".png"), width = 12, height = 7)
 ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".svg"), width = 12, height = 7, limitsize = F)
 
 #ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".pdf"), width = 14, height = 7, limitsize = F,  useDingbats=FALSE)
+
+
 
 
 ```
@@ -5252,12 +7709,16 @@ soil <- fig_4B_ordinations(
 #                     alpha = 0.2, linewidth = 0
 #                     )
 
-ordination_OPR <- zfecal + AD + WWTP + soil + 
-  plot_layout(ncol = 1, widths = c(1), heights = c(1,1,1,1), guides = "collect") & theme(legend.position = "bottom")
+ordination_OPR <- zfecal + labs(title = "OPR") +
+  AD + WWTP + soil + 
+  plot_layout(ncol = 1, widths = c(1), heights = c(1,1,1,1), guides = "collect") & 
+  theme(legend.position = "none", plot.title = element_text(size = 16, face = "bold"))
 
 
 
 ```
+
+
 
 
 
@@ -5268,23 +7729,555 @@ ordination_OPR <- zfecal + AD + WWTP + soil +
 ```{r}
 
 
-combined <- ordination_V4 | ordination_V1V3 | ordination_V1V8 
+combined <- ordination_V4 | ordination_V1V3 | ordination_V1V8 | ordination_OPR
+
+x_panel_lab = c("Fecal", "AD", "WWTP", "Soil")
+y_panel_lab = c("V4", "V1-V3", "V1-V8", "OPR")
 
 combined
 
+plot_name="Fig_S16_betadiv_per_sample_and_primer"
+plot_folder=folder_dir_supp
+ggsave(paste0(plot_dir ,plot_folder, "/", plot_name, ".svg"), width = 10, height =8 )
+ggsave(paste0(plot_dir ,plot_folder, "/", plot_name, ".png"), width = 10, height =8)
+
+
+
+
+
+
+###
+library(grid)
+
+
+panel_labels <-c("Fecal", "AD", "WWTP", "Soil")
+
+combined <- (
+  ordination_V4 |
+  ordination_V1V3 |
+  ordination_V1V8 |
+  ordination_OPR
+) +
+  plot_annotation(
+    tag_levels = list(panel_labels), 
+  ) &
+  theme(
+    plot.tag = element_text(size = 16, face = "bold", angle = 90#, hjust = 0, vjust = 0
+                            ),
+    #plot.tag.position = c(0.02, 0.98)
+  )
+
+combined
+
+
+
+
 ```
+
+
+## Figure S16 - BC distance
+
+```{r}
+
+
+
+format_distance_row <- function(
+  plot,
+  show_column_headers = FALSE,
+  show_x_axis = FALSE
+) {
+
+  plot +
+    theme(
+      strip.text.x = if (
+        show_column_headers
+      ) {
+        element_text(
+          size = 13,
+          face = "bold",
+          color = "black"
+        )
+      } else {
+        element_blank()
+      },
+      
+      axis.line.x.bottom = if (
+          show_x_axis
+        ) {
+          element_line(
+            color = "black",
+            linewidth = 0.4
+          )
+        } else {
+          element_blank()
+        },
+        
+        axis.ticks.x.bottom = if (
+          show_x_axis
+        ) {
+          element_line(
+            color = "black",
+            linewidth = 0.4
+          )
+        } else {
+          element_blank()
+        },
+        
+        axis.ticks.length.x.bottom = if (
+          show_x_axis
+        ) {
+          grid::unit(3, "pt")
+        } else {
+          grid::unit(0, "pt")
+        },
+
+      axis.text.x = if (
+        show_x_axis
+      ) {
+        element_text(
+          size = 11,
+          angle = 0,
+          hjust = 0.5,
+          lineheight = 0.9,
+          color = "black",
+          margin = margin(t = 5)
+        )
+      } else {
+        element_blank()
+      },
+
+      axis.ticks.x = if (
+        show_x_axis
+      ) {
+        element_line(
+          color = "black",
+          linewidth = 0.4
+        )
+      } else {
+        element_blank()
+      },
+
+      axis.line.x = if (
+        show_x_axis
+      ) {
+        element_line(
+          color = "black",
+          linewidth = 0.4
+        )
+      } else {
+        element_blank()
+      },
+      
+
+      axis.title.x = element_blank(),
+
+      panel.spacing.x = grid::unit(
+        0.25,
+        "cm"
+      ),
+
+      plot.margin = margin(
+        3,
+        5,
+        3,
+        5
+      )
+    )
+}
+
+p_V4 <- format_distance_row(
+  fig_4B_V4$distance_plot,
+  show_column_headers = TRUE,
+  show_x_axis = FALSE
+)
+
+p_V1V3 <- format_distance_row(
+  fig_4B_V1V3$distance_plot,
+  show_column_headers = FALSE,
+  show_x_axis = FALSE
+)
+
+p_V1V8 <- format_distance_row(
+  fig_4B$distance_plot,
+  show_column_headers = FALSE,
+  show_x_axis = FALSE
+)
+
+p_OPR <- format_distance_row(
+  fig_4B_OPR$distance_plot,
+  show_column_headers = FALSE,
+  show_x_axis = TRUE
+)
+
+final_distance_plot <- wrap_plots(
+  p_V4,
+  p_V1V3,
+  p_V1V8,
+  p_OPR,
+  ncol = 1,
+  heights = c(
+    1,
+    1,
+    1,
+    1.12
+  ),
+  guides = "collect",
+  axis_titles = "collect_y"
+) &
+  theme(
+    legend.position = "bottom"
+  )
+
+plot_name="Fig_S16_betadiversty_BC_distances"
+plot_folder=folder_dir_supp
+#ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".png"), width = 12, height = 7)
+ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".svg"), width = 8, height = 8, limitsize = F)
+ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".png"), width = 8, height = 8, limitsize = F)
+
+```
+
+
+
+## Figure S15: Correlation in abundance per ASV complex communities 
+
+```{r}
+
+detected_by <- global_ASVs_combined %>% 
+  filter(!global_asv_id %in% unlist(lenght_df$global_asv_id)) %>% 
+  filter(str_detect(subsampling_group, "sample_size_all_reads")) %>% 
+  distinct(basecalling, primerset, sample_content, global_asv_id) %>% 
+  group_by(primerset, sample_content, global_asv_id) %>% 
+  mutate(n = n_distinct(basecalling)) %>% 
+  mutate(
+    detected_by = case_when(
+      n == 2 ~ "ONT and PacBio",
+      n == 1 & basecalling == "pacbio"  ~ "PacBio",
+      n == 1 & basecalling == "super"  ~ "ONT", 
+      .default = NA
+    )
+  ) %>% ungroup()
+
+
+custom_colors_fill = c(
+  "white",
+    #"#0077B6",
+     "white","#0077B6",
+    "#CC007A",
+    "#0077B6"
+    
+  )
+
+detected_by %>% 
+  #filter(!global_asv_id %in% unlist(lenght_df$global_asv_id)) %>% 
+  group_by(primerset, sample_content, detected_by) %>% 
+  summarise(n = n())
+
+combined_amp_long <- function(primer = "V1V8", rarefy_num = 228951){
+# === 1. Load ampvis object ===
+  amp_obj <- read_and_format_to_amp_object(
+    base_dir = base_dir,
+    base_dir2 =  paste0(WD, "/results/"),
+    primerset_name = {{primer}}, #"V1V8",
+    subsample_group = "all_reads",
+    global_ASVs_zymo_all_ref_match = global_ASVs_zymo_all_ref_match,
+    new_barcode = new_barcode,
+    type = "_all"
+  )
+
+  amp_obj <- amp_obj %>% amp_subset_samples(rarefy = {{rarefy_num}})
+
+  # === 2. Fix metadata ===
+  amp_obj$metadata <- amp_obj$metadata %>%
+    mutate(
+      type = sub(".*_", "", SampleID),
+      abun_tab = case_when(
+        type == "all" ~ "-otutab",
+        type == "exact" ~ "-search_exact"
+      ),
+      basecalling = factor(basecalling,
+                           levels = c("pacbio", "super"),
+                           labels = c("PacBio", "ONT"))
+    )
+
+# === 4. LONG DATA ===
+  df_long <- amp_obj %>%
+    amp_subset_samples(normalise = TRUE) %>%
+    amp_export_long()
+  
+}
+
+
+df_long_comp <- 
+  rbind(
+    amp_V4_merge  %>% amp_subset_samples(normalise = T) %>% amp_export_long(),
+    amp_V1V3_merge %>% amp_subset_samples(normalise = T)  %>% amp_export_long(),
+    amp_V1V8_merge %>% amp_subset_samples(normalise = T)  %>% amp_export_long(),
+    amp_OPR_merge %>% amp_subset_samples(normalise = T) %>% amp_export_long()
+    ) %>% 
+  filter(!OTU %in% unlist(lenght_df$global_asv_id))
+
+# %>% 
+#   mutate(is_ref = OTU %in%
+#              (global_ASVs_zymo_all_ref_match %>%
+#                 filter(Match_type == "Exact") %>%
+#                 pull(global_asv_id)))
+
+  # === 5. Compute OTU rank table ===
+  otu_rank_table_PB <- df_long_comp %>%
+    filter(basecalling == "PacBio") %>% 
+    group_by(OTU, primerset, ,sample_content, new_barcode) %>%
+    summarise(mean_abun_PB = mean(count, na.rm = TRUE)) %>%
+    arrange(desc(mean_abun_PB), OTU) %>%
+    mutate(ASV_rank_PB = row_number())
+
+  
+  otu_rank_table_ONT <- df_long_comp %>%
+    filter(basecalling == "ONT") %>% 
+    group_by(OTU, primerset, new_barcode, sample_content) %>%
+    summarise(mean_abun_ONT = mean(count, na.rm = TRUE)) %>%
+    arrange(desc(mean_abun_ONT), OTU) %>%
+    mutate(ASV_rank_ONT = row_number())
+  
+#asv_mean_abundance <- full_join(otu_rank_table_ONT, otu_rank_table_PB) 
+
+# Individual PCR-replicate observations
+replicate_abundance <- full_join(
+  otu_rank_table_ONT,
+  otu_rank_table_PB,
+  # by = c("OTU", "primerset", "new_barcode", "sample_content" #, "is_ref"
+  #        )
+) %>% 
+  mutate(
+    #mean_abun_ONT = replace_na(mean_abun_ONT, 0),
+    #mean_abun_PB  = replace_na(mean_abun_PB, 0),
+    # is_ref = factor(
+    #   is_ref,
+    #   levels = c(TRUE, FALSE),
+    #   labels = c("Reference ASV", "Non-reference ASV")
+    # )
+  ) %>% 
+  left_join(detected_by %>% rename("OTU" = "global_asv_id")) %>% 
+  filter(!is.na(basecalling)) 
+
+# Mean across the four PCR replicates
+asv_mean_abundance <- replicate_abundance %>%
+  group_by(primerset, OTU, sample_content, detected_by) %>%
+  summarise(
+    mean_abun_ONT = mean(mean_abun_ONT, na.rm = TRUE),
+    mean_abun_PB  = mean(mean_abun_PB, na.rm = TRUE),
+    .groups = "drop"
+  ) %>% 
+  mutate(
+    ten_reads = case_when(
+      primerset == "V4" ~ 100/5126*5, 
+      primerset == "V1V3" ~ 100/29083*5, 
+      primerset == "V1V8" ~ 100/88500*5, 
+      primerset == "OPR" ~ 100/27135*5, .default = NA
+      ),
+     primerset = factor(primerset, levels = c("V4", "V1V3", "V1V8", "OPR"),
+                            labels = c("V4 (5126 reads)", "V1-V3 (29083 reads)", "V1-V8 (88500 reads)", "OPR (27135 reads)")), 
+    sample_content = factor(sample_content, levels =c("Zmock", "Zfecal", "AD", "WWTP", "Soil"), 
+                            labels =c("Zmock", "Fecal", "AD", "WWTP", "Soil")), 
+    detected_by = factor(detected_by, levels = c("ONT and PacBio","ONT", "PacBio"))
+    
+    )
+# %>% 
+#   left_join(detected_by %>% rename("OTU" = "global_asv_id") %>% select())
+
+correlation_results <- asv_mean_abundance %>%
+  group_by(primerset, sample_content) %>%
+  group_modify(~ {
+    test <- cor.test(
+      .x$mean_abun_ONT,
+      .x$mean_abun_PB,
+      method = "spearman",
+      exact = FALSE
+    )
+
+    tibble(
+      rho = unname(test$estimate),
+      p_value = test$p.value
+    )
+  }) %>%
+  ungroup() %>%
+  mutate(
+    label = paste0(
+      "\u03c1 = ", sprintf("%.3f", rho),
+      "\n P", format.pval(
+        p_value,
+        digits = 2,
+        eps = 0.001,
+        prefix = "P "
+      )
+    )
+  )
+
+mb <- unique(as.numeric(0:10 %o% 10 ^ (0:3)))
+pseudo_log <- scales::pseudo_log_trans(
+  base = 10,
+  sigma = 1e-3
+)
+
+axis_breaks <- c(
+  0, 1e-2,
+  1e-1, 1, 10
+)
+
+ggplot() +
+  geom_abline(
+    intercept = 0,
+    slope = 1,
+    linetype = 2,
+    linewidth = 0.6
+  ) +
+
+  # Individual PCR replicates
+  # geom_point(
+  #   data = replicate_abundance,
+  #   aes(
+  #     x = mean_abun_ONT,
+  #     y = mean_abun_PB,
+  #     color = detected_by   
+  #   ),
+  #   size = 1.3,
+  #   alpha = 0.20
+  # ) +
+
+  # Mean across PCR replicates
+  geom_vline(data = asv_mean_abundance, aes(xintercept = ten_reads),
+             colour = "grey25",
+    linetype = "dashed",
+    linewidth = 0.45,
+    alpha = 0.8
+  ) +
+   geom_hline(data = asv_mean_abundance, aes(yintercept = ten_reads),
+             colour = "grey25",
+    linetype = "dashed",
+    linewidth = 0.45,
+    alpha = 0.8
+  ) +
+  geom_point(
+    data = asv_mean_abundance,
+    aes(
+      x = mean_abun_ONT,
+      y = mean_abun_PB,
+      color = detected_by   
+    ),
+    size = 1.1, shape = 16,
+    alpha = 0.55
+  ) +
+
+  geom_text(
+    data = correlation_results,
+    aes(
+      x = Inf,
+      y = -Inf,
+      label = label
+    ),
+    inherit.aes = FALSE,
+    hjust = 1.08,
+    vjust = -0.45,
+    size = 4
+  ) +
+
+  facet_grid2(
+    #sample_content ~ primerset,
+    primerset ~sample_content,
+    scales = "free", independent = "all"
+  ) +
+
+  scale_color_manual(
+    values = c(
+      
+       "PacBio" = "#CC007A",
+      "ONT" = "#0077B6", "ONT and PacBio" = "grey40"
+    ),
+    name = NULL
+  ) +
+
+  # scale_x_continuous(transform = "pseudo-log",
+  #   expand = expansion(mult = c(0.02, 0.05))
+  # ) +
+  # scale_y_continuous(#transform = "pseudo-log",
+  #   expand = expansion(mult = c(0.02, 0.05))
+  # ) +
+  # scale_x_log10(#minor_breaks = mb, 
+  #               limits = c(0.00001, NA), 
+  #               expand = expansion(mult = c(0, 0.05))
+  #                                      ) +
+  # scale_y_log10(#minor_breaks = mb, 
+  #               expand = expansion(mult = c(0.02, 0.05))) +
+  labs(
+    x = "Mean relative abundance, ONT (%)",
+    y = "Mean relative abundance, PacBio (%)"
+  ) +
+
+  guides(
+    color = guide_legend(
+      override.aes = list(
+        alpha = 1,
+        size = 2.5
+      )
+    )
+  ) +
+
+  theme_marie_clean() +
+  theme(
+    axis.text.x = element_text(
+      hjust = 0.5,
+      vjust = 1,
+      angle = 0
+    ),
+    strip.background = element_blank(),
+    panel.grid.minor = element_blank(),
+    legend.position = "bottom",
+    strip.text = element_text(face = "bold", size = 15)
+  ) +
+  scale_x_continuous(
+  trans = pseudo_log,
+  limits = c(0, NA),
+  breaks = axis_breaks,
+  labels = function(x) format(
+    x,
+    scientific = FALSE,
+    trim = TRUE
+  ),
+  expand = expansion(mult = c(0.02, 0.05))
+) +
+scale_y_continuous(
+  trans = pseudo_log,
+  limits = c(0, NA),
+  breaks = axis_breaks,
+  labels = function(x) format(
+    x,
+    scientific = FALSE,
+    trim = TRUE
+  ),
+  expand = expansion(mult = c(0.02, 0.05))
+)
+
+
+plot_name="Fig_S15_corr_complex"
+plot_folder=folder_dir_supp
+ggsave(paste0(plot_dir ,plot_folder, "/", plot_name, ".svg"), width = 12, height =11 )
+ggsave(paste0(plot_dir ,plot_folder, "/", plot_name, ".png"), width = 12, height =11)
+
+# Correlation between ASV relative abundances obtained using ONT and PacBio sequencing. Small translucent points represent individual technical PCR replicates, whereas larger points represent the mean relative abundance across the four replicates. Colours distinguish ASVs with and without an exact match to the reference sequences. The dashed line represents equal relative abundance between sequencing platforms. Spearman correlations were calculated from the replicate-averaged ASV abundances separately for each primer set.
+
+
+###############
+  
+```
+
 
 
 
 # Betadiversity across primersets
 
 
-
-
 ## Figure 6B
 
 ```{r}
-
 amp_merge_full_1 <- amp_merge_ampvis2(amp_V1V3_merge, amp_V4_merge, by_refseq = FALSE)
 
 amp_merge_full_2 <- amp_merge_ampvis2(amp_merge_full_1, amp_V1V8_merge, by_refseq = FALSE) %>% 
@@ -5305,9 +8298,12 @@ amp_merge_full_long <- amp_merge_full_2 %>%
   mutate(rel_abun_genus = sum(rel_abun_ASV)) %>% ungroup() %>% 
   nest(samples = c(OTU, mapped_reads, count, Genus, Species, Family,
                    rel_abun_ASV, rel_abun_species, rel_abun_genus, rel_abun_family))
+```
 
 
+## Family level
 
+```{r}
 p_species_Zfecal <- PCOA_from_long_df(
         amp_merge_full_long %>% filter(sample_content == "Zfecal"),
         tax_level = "Family",
@@ -5427,14 +8423,10 @@ top <- p_species_Zfecal + p_species_AD +  p_species_WWTP + p_species_Soil +
 
 
 
-  
-  
-
-
 ```
 
 
-## Figure 6A Family Heatmap 
+### Figure 6A Family Heatmap 
 
 ```{r}
 
@@ -5507,7 +8499,7 @@ hm
 
 ```
 
-## Fig 6: HM + beta div. 
+### Fig 6: HM + beta div. 
 
 ```{r}
 
@@ -5525,6 +8517,412 @@ ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".svg"), width = 11, he
     
 
 ```
+
+
+## Genus level
+
+
+```{r}
+p_species_Zfecal <- PCOA_from_long_df(
+        amp_merge_full_long %>% filter(sample_content == "Fecal"),
+        tax_level = "Genus",
+        abun_limit = 0.1
+      ) +
+        geom_point(
+          aes(
+            color = basecalling,
+            shape = primerset
+          ),
+          size = 3, alpha = 1
+        ) +
+       scale_color_manual(values = seq_method_colors) + 
+        theme_marie_clean() +
+          guides(shape = guide_legend(title = "Primer set"), 
+                 color = guide_legend(title = "Sequencing platform")) +
+        ggtitle(paste0("Zfecal")) 
+
+test_vec = c("basecalling", "primerset")
+
+adonis_results_fecal <- ADONIS_from_long_df(
+    data =  amp_merge_full_long %>% filter(sample_content == "Fecal") %>% unnest(samples),
+    tax_level = "Genus", 
+    abun_limit = 0.1,
+    test_varibles = test_vec
+)
+  
+
+p_species_AD <- PCOA_from_long_df(
+        amp_merge_full_long %>% filter(sample_content == "AD"),
+        tax_level = "Genus",
+        abun_limit = 0.1
+      ) +
+        geom_point(
+          aes(
+            color = basecalling,
+            shape =  primerset
+          ),
+          size = 3, alpha = 1
+        ) +
+       scale_color_manual(values = seq_method_colors) + 
+        theme_marie_clean() +
+        guides(shape = guide_legend(title = "Primer set"), 
+                 color = guide_legend(title = "Sequencing platform")) +
+        ggtitle(paste0("AD")) 
+
+adonis_results_AD <- ADONIS_from_long_df(
+    data =  amp_merge_full_long %>% filter(sample_content == "AD") %>% unnest(samples),
+    tax_level = "Genus", 
+    abun_limit = 0.1,
+    test_varibles = test_vec
+)
+  
+  
+p_species_WWTP <- PCOA_from_long_df(
+        amp_merge_full_long %>% filter(sample_content == "WWTP"),
+        tax_level = "Genus",
+        abun_limit = 0.1
+      ) +
+        geom_point(
+          aes(
+            color =basecalling,
+            shape =  primerset
+          ),
+          size = 3, alpha = 1
+        ) +
+       scale_color_manual(values = seq_method_colors) + 
+        theme_marie_clean() +
+          guides(shape = guide_legend(title = "Primer set"), 
+                 color = guide_legend(title = "Sequencing platform")) +
+        ggtitle(paste0("WWTP")) 
+
+adonis_results_WWTP <- ADONIS_from_long_df(
+    data =  amp_merge_full_long %>% filter(sample_content == "WWTP") %>% unnest(samples),
+    tax_level = "Genus", 
+    abun_limit = 0.1,
+    test_varibles = test_vec
+)
+  
+  
+p_species_Soil <- PCOA_from_long_df(
+        amp_merge_full_long %>% filter(sample_content == "Soil"),
+        tax_level = "Genus",
+        abun_limit = 0.1
+      ) +
+        geom_point(
+          aes(
+            color =basecalling,
+            shape =  primerset
+          ),
+          size = 3, alpha = 1
+        ) +
+       scale_color_manual(values = seq_method_colors) + 
+        theme_marie_clean() +
+          guides(shape = guide_legend(title = "Primer set"), 
+                 color = guide_legend(title = "Sequencing platform")) +
+        ggtitle(paste0("Soil")) 
+
+adonis_results_soil <- ADONIS_from_long_df(
+    data =  amp_merge_full_long %>% filter(sample_content == "Soil") %>% unnest(samples),
+    tax_level = "Genus", 
+    abun_limit = 0.1,
+    test_varibles = test_vec
+)
+  
+
+
+top <- p_species_Zfecal + p_species_AD +  p_species_WWTP + p_species_Soil + 
+  plot_layout(heights = c(1, 1,1,1), guides = "collect") & theme(legend.position = "bottom", legend.box = "vertical",
+                                                                                                                                           axis.title = element_text(size = 11),
+                                                                                                                                           axis.text.y = element_text(size = 10),
+                                                                                                                                           axis.text.x = element_text(size  =10, angle = 0, hjust = 0.5)) 
+
+
+
+```
+
+### Figure 6 adonis 
+
+```{r}
+
+
+adonis_results <- list(
+  Fecal = adonis_results_fecal,
+  AD    = adonis_results_AD,
+  WWTP  = adonis_results_WWTP,
+  Soil  = adonis_results_soil
+)
+
+
+adonis_facet_data <- adonis_summary %>%
+  mutate(
+    environment = factor(
+      as.character(environment),
+      levels = c(
+        "Fecal",
+        "AD",
+        "WWTP",
+        "Soil"
+      )
+    ),
+
+    test = factor(
+      as.character(test),
+      levels = c(
+        "Sequencing platform",
+        "Primer set"
+      )
+    ),
+
+    result_line = paste0(
+      test,
+      ":\n  R² = ",
+      sprintf("%.2f", R2),
+      ", ",
+      p_label
+    ),
+
+    text_style = if_else(
+      p_value < 0.05,
+      "bold",
+      "plain"
+    )
+  )
+
+
+
+adonis_summary_plot <- ggplot(
+  adonis_facet_data,
+  aes(
+    x = 0,
+    y = test,
+    label = result_line,
+    fontface = text_style
+  )
+) +
+  geom_text(
+    hjust = 0,
+    size = 4
+  ) +
+  facet_grid(
+    rows = vars(environment)
+  ) +
+  scale_x_continuous(
+    limits = c(0, 1),
+    expand = expansion(
+      mult = c(0.03, 0.03)
+    )
+  ) +
+  scale_y_discrete(
+    expand = expansion(
+      add = 0.65
+    )
+  ) +
+  coord_cartesian(
+    clip = "off"
+  ) +
+  labs(
+    x = NULL,
+    y = NULL,
+    #title = "PERMANOVA",
+    #subtitle = "Bray–Curtis dissimilarity",
+    #caption = "Bold indicates p < 0.05"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid = element_blank(),
+
+    axis.text = element_blank(),
+    axis.ticks = element_blank(),
+
+    strip.background = element_blank(),
+
+    strip.text.y.right = element_blank(),
+    #   element_text(
+    #   size = 11,
+    #   face = "bold",
+    #   color = "black",
+    #   angle = 0,
+    #   margin = margin(l = 8)
+    # ),
+
+    # panel.spacing.y = grid::unit(
+    #   0.2,
+    #   "cm"
+    # )
+    )
+
+
+adonis_summary_plot
+
+```
+
+
+
+### Figure 6A Genus Heatmap 
+
+```{r}
+
+
+# === 5. Compute OTU rank table ===
+  otu_rank_table <- amp_merge_full_long %>%
+  unnest(samples) %>% 
+  filter(!str_detect(Genus, "unclass")) %>% 
+  group_by(Genus, sample_content#, basecalling, primerset
+           ) %>%
+  summarise(mean_abun = mean(rel_abun_genus, na.rm = TRUE)) %>%
+    arrange(desc(mean_abun), Genus) %>%
+    group_by(sample_content#, basecalling, primerset
+             ) %>% 
+    #mutate(ASV_rank = row_number()) %>% 
+    #slice_min(ASV_rank, n = 10) %>% 
+  slice_max(mean_abun, n = 15) %>% ungroup() %>% 
+  dplyr::arrange(sample_content, desc(mean_abun)) %>%
+  distinct(sample_content, Genus, mean_abun) %>% 
+  #arrange(sample_content) %>% 
+  mutate(ASV_rank = row_number()) %>% ungroup()
+
+#%>% 
+#  select(-basecalling, -primerset) 
+# %>% 
+#   pivot_wider(names_from = basecalling, values_from = mean_abun)
+
+  # === 6. Heatmap ===
+  bin_colors <- c("#FFF5EB", "#F5C9B0", "#EC9E75", "#E2733B", "#D94801")
+  #hm_title <- df_long %>% distinct(sample_content) %>% unlist()
+
+  hm <- amp_merge_full_long %>%
+    unnest(samples) %>% 
+    inner_join(otu_rank_table#, by = "Family"
+               ) %>%
+    group_by(Genus, basecalling, ASV_rank, 
+             sample_content, primerset) %>%
+    summarise(mean_abun_2 = mean(rel_abun_genus), .groups = "drop") %>%
+    mutate(
+      #OTU_clean = paste0("ASV", ASV_rank),
+      OTU_label = paste0(sample_content, Genus),
+      #mean_abun_2 = if_else(mean_abun_2 == 0, NA, mean_abun_2),
+      primerset = factor(primerset, levels = c("V4", "V1V3", "V1V8", "OPR"), labels = c("V4", "V1-V3", "V1-V8", "OPR")), 
+    sample_content = factor(sample_content, levels =c("Zmock", "Fecal", "AD", "WWTP", "Soil")), 
+    ) %>%
+    arrange(desc(ASV_rank)) %>% 
+      #ASV_rank)) %>% 
+    mutate(
+      OTU_label = fct_inorder(OTU_label)
+      #OTU_label = fct_(OTU_label)
+      ) %>% 
+    ggplot(aes(x = basecalling, y = OTU_label, fill = mean_abun_2)) +
+    geom_tile(color = "white", linewidth = 0.3) +
+    geom_text(aes(label = if_else(mean_abun_2 == 0, sprintf("%.0f", mean_abun_2), #"0", 
+                                  sprintf("%.1f", mean_abun_2))), size = 3) +
+    scale_fill_gradientn(colours = bin_colors, na.value = "white") +
+    labs(x = NULL, y = NULL, fill = "Relative\nabundance (%)") +
+    facet_nested(sample_content~primerset, space = "free", scales = "free", switch = "y") +
+    scale_y_discrete(expand = c(0, 0), 
+                     labels = function(x) str_replace(x, "^.*?__", "")) +
+    scale_x_discrete(expand = c(0, 0)) +
+    #theme_minimal(base_size = 12) +
+    theme_marie_clean() +
+    theme(
+      axis.text.y = element_text(size = 9, color = "black"),
+      axis.text.x = element_text(size = 12, , color = "black", angle = 0, hjust = 0.5),
+      panel.grid = element_blank(),
+      legend.position = "none", strip.placement = "outside", 
+      strip.text.y.left = element_text(angle = 0, vjust = 1, hjust = 0, size = 16, face = "bold"), 
+      strip.text.x = element_text(size = 16, face = "bold"), 
+    )
+
+hm
+
+```
+
+### Fig 6: HM + beta div. 
+
+```{r}
+
+ hm  | top | adonis_summary_plot + #plot_layout(widths = c(1,1 ))  + 
+  plot_layout(heights = c(1, 1,1,1), guides = "collect") & 
+  theme(legend.position = "bottom", legend.box = "vertical",
+                                                                                                                                           axis.title = element_text(size = 11),
+                                                                                                                                           axis.text.y = element_text(size = 10),
+                                                                                                                                           axis.text.x = element_text(size  =10, angle = 0, hjust = 0.5)) 
+
+
+plot_name="Fig_6"
+plot_folder=folder_dir_main
+#ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".png"), width = 11, height = 10)
+ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".svg"), width = 11, height = 10, limitsize = F)
+    
+
+
+
+
+```
+
+```{r}
+
+library(patchwork)
+
+common_theme <- theme(
+  axis.title = element_text(
+    size = 11
+  ),
+  axis.text.y = element_text(
+    size = 10
+  ),
+  axis.text.x = element_text(
+    size = 10,
+    angle = 0,
+    hjust = 0.5
+  )
+)
+
+hm_formatted <- hm +
+  common_theme
+
+top_formatted <- top +
+  common_theme
+
+# Ensure the PERMANOVA panel has no axes
+adonis_formatted <- adonis_summary_plot +
+  theme(
+    axis.text = element_blank(),
+    axis.title = element_blank(),
+    axis.ticks = element_blank()
+  )
+
+# Protect it from the global patchwork theme
+adonis_locked <- wrap_elements(
+  full = adonis_formatted
+)
+
+final_plot <- wrap_plots(
+  hm_formatted,
+  top_formatted,
+  adonis_locked,
+  nrow = 1,
+  widths = c(
+    1.45,  # heatmap
+    1.25,  # ordinations
+    0.80   # PERMANOVA
+  ),
+  guides = "collect"
+) &
+  theme(
+    legend.position = "bottom",
+    legend.box = "vertical"
+  )
+
+  
+  
+  plot_name="Fig_6_Genus"
+plot_folder=folder_dir_main
+#ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".png"), width = 11, height = 10)
+ggsave(paste0(plot_dir,"/" ,plot_folder, "/", plot_name, ".svg"), width = 12, height = 11, limitsize = F)
+   
+  
+```
+
+
 
 
 
